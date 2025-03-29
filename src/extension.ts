@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { FileWatcherService } from './services/fileWatcherService';
+import { ActionManager } from './services/actionManager';
 
 // Recording session data structures
 interface SessionData {
@@ -929,6 +931,18 @@ export function activate(context: vscode.ExtensionContext) {
             updateTerminalStatusBar(isTracking);
         })
     );
+    
+    // Initialize action manager and file watcher
+    const actionManager = new ActionManager();
+    const fileWatcherService = new FileWatcherService(actionManager);
+    fileWatcherService.start();
+    
+    // Add the services to context.subscriptions to ensure proper disposal
+    context.subscriptions.push({
+        dispose: () => {
+            fileWatcherService.stop();
+        }
+    });
     
     // Add our disposables to the context subscriptions
     context.subscriptions.push(
