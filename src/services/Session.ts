@@ -49,7 +49,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
                     session.actions.map((action, index) => {
                         const item = new SessionItem(
                             `${sessionId}-action-${index}`,
-                            action.content.substring(0, 50) + (action.content.length > 50 ? '...' : ''),
+                            action.command.substring(0, 50) + (action.command.length > 50 ? '...' : ''),
                             vscode.TreeItemCollapsibleState.None
                         );
                         item.description = new Date(action.timestamp).toLocaleTimeString();
@@ -144,7 +144,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
     }
     
     // Add action to current session
-    async addAction(type: 'command' | 'consequence' | 'note', content: string, success?: boolean): Promise<void> {
+    async addAction(type: 'command' | 'consequence' | 'note' | 'codeChange', content: string, success?: boolean, codeChange?: string, output?: string): Promise<void> {
         if (!this.currentSession) {
             const startNew = await vscode.window.showInformationMessage(
                 'No active recording session. Start a new one?',
@@ -161,21 +161,27 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
                 return;
             }
         }
-        
+    
         const session = this.sessions.get(this.currentSession);
         if (session) {
             const action: ActionData = {
-                type,
-                content,
-                timestamp: new Date().toISOString(),
-                success
+                type: type,
+                command: content,
+                code_change: codeChange || '',
+                output: output || '',
+                success: success !== undefined ? success : true,
+                timestamp: new Date().toISOString()
             };
-            
-            session.actions.push(action);
-            
+    
+            if (session.actions) {
+                session.actions.push(action);
+            } else {
+                session.actions = [action];
+            }
+    
             // Save the session to its file
             this.saveSession(this.currentSession);
-            
+    
             // Refresh the tree view
             this.refresh();
         }
@@ -206,20 +212,43 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
             });
             
             if (content) {
-                await this.addAction('consequence', content, result === 'Success');
+                await this.addAction('consequence', content, result === 'Success', undefined, content);
             }
         }
     }
     
     // Add a note to the session
-    async addNoteAction(): Promise<void> {
-        const note = await vscode.window.showInputBox({
-            placeHolder: 'Enter your note',
-            prompt: 'Add a note to the session'
-        });
+    public async addNoteAction(noteText?: string, additionalData?: any): Promise<void> {
+        if (!this.currentSession) {
+            const startNew = await vscode.window.showInformationMessage(
+                'No active recording session. Start a new one?',
+                'Yes',
+                'No'
+            );
+            
+            if (startNew === 'Yes') {
+                await this.startSession();
+                if (!this.currentSession) {
+                    return; // User cancelled session creation
+                }
+            } else {
+                return;
+            }
+        }
         
-        if (note) {
-            await this.addAction('note', note);
+        if (!noteText) {
+            noteText = await vscode.window.showInputBox({
+                prompt: 'Enter a note for this session',
+                placeHolder: 'e.g., "Found a bug in the authentication module"'
+            });
+        }
+        
+        if (noteText) {
+            let codeChange = undefined;
+            if (additionalData && additionalData.codeChange) {
+                codeChange = JSON.stringify(additionalData.codeChange);
+            }
+            await this.addAction('note', noteText, undefined, codeChange);
         }
     }
     
@@ -312,61 +341,15 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
         if (!session) {
             return '{}';
         }
-        
-        // Extract commands and consequences (outputs) and pair them
-        const commandOutputPairs: {command: string, output: string, success: boolean, timestamp: string}[] = [];
-        
-        let lastCommand: {content: string, timestamp: string} | null = null;
-        
-        for (const action of session.actions) {
-            if (action.type === 'command') {
-                // If there was a previous command without output, add it with empty output
-                if (lastCommand) {
-                    commandOutputPairs.push({
-                        command: lastCommand.content,
-                        output: '',
-                        success: true,
-                        timestamp: lastCommand.timestamp
-                    });
-                }
-                
-                // Store this command
-                lastCommand = {
-                    content: action.content,
-                    timestamp: action.timestamp
-                };
-            } else if (action.type === 'consequence' && lastCommand) {
-                // Pair with the last command
-                commandOutputPairs.push({
-                    command: lastCommand.content,
-                    output: action.content,
-                    success: action.success || false,
-                    timestamp: action.timestamp
-                });
-                
-                // Reset last command to avoid duplicates
-                lastCommand = null;
-            }
-        }
-        
-        // For any remaining commands with no output, add them with empty output
-        if (lastCommand) {
-            commandOutputPairs.push({
-                command: lastCommand.content,
-                output: '',
-                success: true,
-                timestamp: lastCommand.timestamp
-            });
-        }
-        
-        // Create the final representation
+    
+        // Use the session's actions directly
         const jsonData = {
             sessionName: session.name,
             sessionDescription: session.description,
             startTime: session.startTime,
-            commands: commandOutputPairs
+            actions: session.actions // Use the actions array from the session
         };
-        
+    
         return JSON.stringify(jsonData, null, 2);
     }
     
@@ -467,8 +450,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
         
         // Get action type for message
         const actionType = session.actions[actionIndex].type;
-        const actionContent = session.actions[actionIndex].content.substring(0, 20) + 
-                            (session.actions[actionIndex].content.length > 20 ? '...' : '');
+        const actionContent = session.actions[actionIndex].command.substring(0, 20) + 
+                            (session.actions[actionIndex].command.length > 20 ? '...' : '');
         
         // Confirm deletion
         const confirmation = await vscode.window.showWarningMessage(

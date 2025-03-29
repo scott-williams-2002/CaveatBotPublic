@@ -2,14 +2,17 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import { diffLines } from 'diff';
 import { ActionManager } from './actionManager';
+import { SessionTreeProvider } from './Session';
 
 export class FileWatcherService {
     private fileWatcher: vscode.FileSystemWatcher | undefined;
     private fileContents: Map<string, string> = new Map();
     private actionManager: ActionManager;
+    private sessionTreeProvider?: SessionTreeProvider;
 
-    constructor(actionManager: ActionManager) {
+    constructor(actionManager: ActionManager, sessionTreeProvider?: SessionTreeProvider) {
         this.actionManager = actionManager;
+        this.sessionTreeProvider = sessionTreeProvider;
     }
 
     public start(): void {
@@ -91,11 +94,28 @@ export class FileWatcherService {
                 'Save to Session'
             ).then(selection => {
                 if (selection === 'Save to Session') {
-                    // Add the diff as a note to the current session
-                    vscode.commands.executeCommand(
-                        'caveatbot.addNote',
-                        `Changed ${fileName}: ${changeType} "${firstLine}"`
-                    );
+                    // Create a detailed code change object
+                    const codeChangeDetails = {
+                        filename: fileName,
+                        fullPath: filePath,
+                        changes: changes.map(change => ({
+                            type: change.type,
+                            content: change.value
+                        }))
+                    };
+                    
+                    // Add the diff as a note to the current session with the code change details
+                    if (this.sessionTreeProvider) {
+                        this.sessionTreeProvider.addNoteAction(
+                            `Changed ${fileName}: ${changeType} "${firstLine}"`,
+                            { codeChange: codeChangeDetails }
+                        );
+                    } else {
+                        vscode.commands.executeCommand(
+                            'caveatbot.addNote',
+                            `Changed ${fileName}: ${changeType} "${firstLine}"`
+                        );
+                    }
                 }
             });
         }

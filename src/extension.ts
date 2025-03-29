@@ -147,7 +147,7 @@ export function activate(context: vscode.ExtensionContext) {
     
     // Initialize action manager and file watcher
     const actionManager = new ActionManager();
-    const fileWatcherService = new FileWatcherService(actionManager);
+    const fileWatcherService = new FileWatcherService(actionManager, sessionTreeProvider);
     fileWatcherService.start();
     
     // Add the services to context.subscriptions to ensure proper disposal

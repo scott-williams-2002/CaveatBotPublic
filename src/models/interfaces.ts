@@ -9,11 +9,12 @@ export interface SessionData {
 }
 
 export interface ActionData {
-    type: 'command' | 'consequence' | 'note';
-    content: string;
+    type: 'command' | 'consequence' | 'note' | 'codeChange';
+    command: string;
+    code_change: string;
+    output: string;
     timestamp: string;
     success?: boolean;
-    output?: string;
 }
 
 // Terminal data structure
