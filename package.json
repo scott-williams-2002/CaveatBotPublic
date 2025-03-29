@@ -16,8 +16,6 @@
   "activationEvents": [
     "onView:caveatbotSessionExplorer",
     "onCommand:caveatbot.startRecording",
-    "onCommand:caveatbot.addCommand",
-    "onCommand:caveatbot.addConsequence",
     "onCommand:caveatbot.addNote",
     "onCommand:caveatbot.setActiveSession",
     "onCommand:caveatbot.closeSession",
@@ -38,16 +36,6 @@
         "command": "caveatbot.startRecording",
         "title": "Start Recording Session",
         "icon": "$(record)"
-      },
-      {
-        "command": "caveatbot.addCommand",
-        "title": "Add Command",
-        "icon": "$(terminal)"
-      },
-      {
-        "command": "caveatbot.addConsequence",
-        "title": "Add Consequence",
-        "icon": "$(reactions)"
       },
       {
         "command": "caveatbot.addNote",
@@ -130,24 +118,9 @@
           "group": "navigation@1"
         },
         {
-          "command": "caveatbot.startCapture",
-          "when": "view == caveatbotSessionExplorer",
-          "group": "navigation@2"
-        },
-        {
           "command": "caveatbot.stopCapture",
-          "when": "view == caveatbotSessionExplorer",
-          "group": "navigation@3"
-        },
-        {
-          "command": "caveatbot.addCommand",
-          "when": "view == caveatbotSessionExplorer",
-          "group": "recording@1"
-        },
-        {
-          "command": "caveatbot.addConsequence",
-          "when": "view == caveatbotSessionExplorer",
-          "group": "recording@2"
+          "when": "view == caveatbotSessionExplorer && caveatbot.terminalTracking",
+          "group": "navigation@2"
         },
         {
           "command": "caveatbot.addNote",
@@ -172,9 +145,9 @@
           "group": "inline@0"
         },
         {
-          "command": "caveatbot.setActiveSession",
-          "when": "view == caveatbotSessionExplorer && viewItem == session",
-          "group": "inline@2"
+          "command": "caveatbot.startCapture",
+          "when": "view == caveatbotSessionExplorer && viewItem == session && !(viewItem == session && viewItem == activeSession)",
+          "group": "inline@1"
         },
         {
           "command": "caveatbot.deleteSession",

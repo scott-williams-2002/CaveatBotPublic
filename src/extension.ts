@@ -21,6 +21,9 @@ export function activate(context: vscode.ExtensionContext) {
     // Connect terminal monitor to session provider
     sessionTreeProvider.setTerminalMonitor(terminalMonitor);
     
+    // Initialize file watcher service in the session provider
+    sessionTreeProvider.initializeFileWatcherService();
+    
     // Register the tree view
     const sessionTreeView = vscode.window.createTreeView('caveatbotSessionExplorer', {
         treeDataProvider: sessionTreeProvider
@@ -29,6 +32,8 @@ export function activate(context: vscode.ExtensionContext) {
     // Register session recording commands
     const startRecordingDisposable = vscode.commands.registerCommand('caveatbot.startRecording', async () => {
         await sessionTreeProvider.startSession();
+        vscode.commands.executeCommand('setContext', 'caveatbot.isRecording', true);
+        statusBarItem.text = '$(pulse) CaveatBot Recording';
     });
     
     // Register terminal output capture command
@@ -50,9 +55,12 @@ export function activate(context: vscode.ExtensionContext) {
     });
     
     // Specific command to start capture
-    const startCaptureDisposable = vscode.commands.registerCommand('caveatbot.startCapture', async () => {
-        if (!sessionTreeProvider.getCurrentSession()) {
-            // If no session is active, start one
+    const startCaptureDisposable = vscode.commands.registerCommand('caveatbot.startCapture', async (item?: SessionItem) => {
+        if (item && item.contextValue === 'session') {
+            // If we're called with a specific session item, set it as active
+            sessionTreeProvider.setActiveSession(item.id);
+        } else if (!sessionTreeProvider.isActiveSession()) {
+            // If no specific session and no active session, start a new one
             await sessionTreeProvider.startSession();
         }
         
@@ -73,13 +81,6 @@ export function activate(context: vscode.ExtensionContext) {
         await terminalMonitor.manualRecordCommand();
     });
     
-    const addCommandDisposable = vscode.commands.registerCommand('caveatbot.addCommand', async () => {
-        await sessionTreeProvider.addCommandAction();
-    });
-    
-    const addConsequenceDisposable = vscode.commands.registerCommand('caveatbot.addConsequence', async () => {
-        await sessionTreeProvider.addConsequenceAction();
-    });
     
     const addNoteDisposable = vscode.commands.registerCommand('caveatbot.addNote', async () => {
         await sessionTreeProvider.addNoteAction();
@@ -93,6 +94,9 @@ export function activate(context: vscode.ExtensionContext) {
     
     const closeSessionDisposable = vscode.commands.registerCommand('caveatbot.closeSession', () => {
         sessionTreeProvider.closeCurrentSession();
+        // Setting the context here again to ensure it's properly updated
+        vscode.commands.executeCommand('setContext', 'caveatbot.isRecording', false);
+        statusBarItem.text = '$(record) CaveatBot';
     });
     
     // Register the view JSON command
@@ -145,15 +149,10 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
     
-    // Initialize action manager and file watcher
-    const actionManager = new ActionManager();
-    const fileWatcherService = new FileWatcherService(actionManager, sessionTreeProvider);
-    fileWatcherService.start();
-    
     // Add the services to context.subscriptions to ensure proper disposal
     context.subscriptions.push({
         dispose: () => {
-            fileWatcherService.stop();
+            sessionTreeProvider.dispose();
         }
     });
     
@@ -164,9 +163,7 @@ export function activate(context: vscode.ExtensionContext) {
         startCaptureDisposable,
         stopCaptureDisposable,
         manualRecordCommandDisposable,
-        addCommandDisposable,
-        addConsequenceDisposable,
-        addNoteDisposable,
+        addNoteDisposable,  // Fix: removed undefined addConsequenceDisposable
         setActiveSessionDisposable,
         closeSessionDisposable,
         captureTerminalOutputDisposable,
@@ -182,6 +179,22 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     );
+
+    // This ensures the recording status is correctly initialized on startup
+    context.subscriptions.push(
+        vscode.commands.registerCommand('caveatbot.checkSessionStatus', () => {
+            const isRecording = sessionTreeProvider.isActiveSession();
+            vscode.commands.executeCommand('setContext', 'caveatbot.isRecording', isRecording);
+            statusBarItem.text = isRecording ? '$(pulse) CaveatBot Recording' : '$(record) CaveatBot';
+            return isRecording;
+        })
+    );
+    
+    // Check session status on activation
+    vscode.commands.executeCommand('caveatbot.checkSessionStatus');
+    
+    // Initialize terminal tracking context (ensure it's set to false by default)
+    vscode.commands.executeCommand('setContext', 'caveatbot.terminalTracking', false);
 }
 
 // This method is called when your extension is deactivated

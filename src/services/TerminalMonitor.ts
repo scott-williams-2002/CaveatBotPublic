@@ -99,7 +99,7 @@ export class TerminalMonitor {
                             return;
                         }
                         
-                        // Get output using clipboard if possible
+                         //Get output using clipboard if possible
                         let output = "";
                         try {
                             output = await this.captureTerminalOutput(event.terminal);
@@ -108,15 +108,12 @@ export class TerminalMonitor {
                         }
                         
                         // Add the command to our session
-                        this.sessionProvider.addAction('command', pendingCommand.command);
+                        //this.sessionProvider.addAction('command', pendingCommand.command, event.exitCode === 0, pendingCommand.timestamp, output);
                         
                         // Add the output as a consequence
                         const success = event.exitCode === 0;
                         if (output) {
-                            const truncatedOutput = output.length > 500 ? output.substring(0, 500) + '...' : output;
-                            this.sessionProvider.addAction('consequence', 
-                                `Exit code: ${event.exitCode}\n${truncatedOutput}`, 
-                                success);
+                            this.sessionProvider.addAction('command', pendingCommand.command, success, pendingCommand.timestamp, output);
                         }
                         
                         // Remove from pending
@@ -205,7 +202,7 @@ export class TerminalMonitor {
             return;
         }
         
-        // Capture output
+        //Capture output
         const output = await this.captureTerminalOutput(vscode.window.activeTerminal);
         
         if (output) {

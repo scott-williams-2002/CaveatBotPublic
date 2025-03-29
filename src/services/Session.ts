@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { diffLines } from 'diff';
 import { SessionData, ActionData, TerminalCommand } from '../models/interfaces';
 import { TerminalMonitor } from './TerminalMonitor';
+import { FileWatcherService } from './fileWatcherService';
+import { ActionManager } from './actionManager';
 
 // Session Tree Provider class
 export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem> {
@@ -12,11 +15,15 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
     private sessions: Map<string, SessionData> = new Map();
     private sessionItems: Map<string, SessionItem> = new Map();
     private currentSession: string | null = null;
+    private isSessionActive: boolean = false; // New state tracking variable
     private sessionsStoragePath: string;
     private terminalMonitor: TerminalMonitor | null = null;
+    private fileWatcherService: FileWatcherService | null = null;
+    private actionManager: ActionManager;
     
     constructor(private context: vscode.ExtensionContext) {
         this.sessionsStoragePath = path.join(context.globalStorageUri.fsPath, 'recording-sessions');
+        this.actionManager = new ActionManager();
         
         // Ensure the sessions directory exists
         if (!fs.existsSync(this.sessionsStoragePath)) {
@@ -29,6 +36,15 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
     
     setTerminalMonitor(monitor: TerminalMonitor): void {
         this.terminalMonitor = monitor;
+    }
+    
+    initializeFileWatcherService(): void {
+        this.fileWatcherService = new FileWatcherService(this.actionManager, this);
+        this.fileWatcherService.start();
+    }
+    
+    getFileWatcherService(): FileWatcherService | null {
+        return this.fileWatcherService;
     }
     
     refresh(): void {
@@ -127,6 +143,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
             
             this.sessionItems.set(sessionId, sessionItem);
             this.currentSession = sessionId;
+            this.isSessionActive = true; // Set active state
             
             // Save the session to its own file
             this.saveSession(sessionId);
@@ -134,6 +151,11 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
             // Start terminal tracking if we have a terminal monitor
             if (this.terminalMonitor) {
                 this.terminalMonitor.updateTrackingState(true);
+            }
+            
+            // Start file tracking if we have a file watcher
+            if (this.fileWatcherService) {
+                this.fileWatcherService.startTracking();
             }
             
             // Refresh the tree view
@@ -146,27 +168,15 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
     // Add action to current session
     async addAction(type: 'command' | 'consequence' | 'note' | 'codeChange', content: string, success?: boolean, codeChange?: string, output?: string): Promise<void> {
         if (!this.currentSession) {
-            const startNew = await vscode.window.showInformationMessage(
-                'No active recording session. Start a new one?',
-                'Yes',
-                'No'
-            );
-            
-            if (startNew === 'Yes') {
-                await this.startSession();
-                if (!this.currentSession) {
-                    return; // User cancelled session creation
-                }
-            } else {
-                return;
-            }
+            vscode.window.showInformationMessage('No active recording session.');
+            return;
         }
     
         const session = this.sessions.get(this.currentSession);
         if (session) {
             const action: ActionData = {
                 type: type,
-                command: content,
+                command: type === 'codeChange' ? '' : content,
                 code_change: codeChange || '',
                 output: output || '',
                 success: success !== undefined ? success : true,
@@ -184,18 +194,6 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
     
             // Refresh the tree view
             this.refresh();
-        }
-    }
-    
-    // Add a command action
-    async addCommandAction(): Promise<void> {
-        const command = await vscode.window.showInputBox({
-            placeHolder: 'Enter the command you executed',
-            prompt: 'Record a command'
-        });
-        
-        if (command) {
-            await this.addAction('command', command);
         }
     }
     
@@ -247,8 +245,10 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
             let codeChange = undefined;
             if (additionalData && additionalData.codeChange) {
                 codeChange = JSON.stringify(additionalData.codeChange);
+                await this.addAction('codeChange', noteText, undefined, codeChange);
+            } else {
+                await this.addAction('note', noteText);
             }
-            await this.addAction('note', noteText, undefined, codeChange);
         }
     }
     
@@ -303,7 +303,12 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
     
     // Get the current active session ID
     getCurrentSession(): string | null {
-        return this.currentSession;
+        return this.currentSession ?? null;
+    }
+    
+    // Check if a session is active
+    isActiveSession(): boolean {
+        return this.isSessionActive;
     }
     
     // View session in standardized JSON format
@@ -357,11 +362,20 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
     setActiveSession(sessionId: string): void {
         if (this.sessions.has(sessionId)) {
             this.currentSession = sessionId;
+            this.isSessionActive = true; // Set active state
             
             // Update terminal tracking
             if (this.terminalMonitor) {
                 this.terminalMonitor.updateTrackingState(true);
             }
+            
+            // Update file tracking
+            if (this.fileWatcherService) {
+                this.fileWatcherService.startTracking();
+            }
+            
+            // Update context to show recording is active
+            vscode.commands.executeCommand('setContext', 'caveatbot.isRecording', true);
             
             vscode.window.showInformationMessage(`Session "${this.sessions.get(sessionId)?.name}" is now active. Terminal commands will be tracked automatically.`);
         }
@@ -372,13 +386,25 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
         if (this.currentSession) {
             const sessionName = this.sessions.get(this.currentSession)?.name;
             this.currentSession = null;
+            this.isSessionActive = false; // Clear active state
             
             // Stop terminal tracking
             if (this.terminalMonitor) {
                 this.terminalMonitor.updateTrackingState(false);
             }
             
+            // Stop file tracking
+            if (this.fileWatcherService) {
+                this.fileWatcherService.updateTrackingState(false);
+            }
+            
+            // Update context to show recording is inactive
+            vscode.commands.executeCommand('setContext', 'caveatbot.isRecording', false);
+            
             vscode.window.showInformationMessage(`Session "${sessionName}" was closed. Terminal command tracking stopped.`);
+            
+            // Refresh the tree view to reflect changes
+            this.refresh();
         }
     }
 
@@ -407,6 +433,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
         // If this is the current session, close it first
         if (this.currentSession === sessionId) {
             this.closeCurrentSession();
+            // This will set isSessionActive to false
         }
         
         // Delete session from memory
@@ -487,6 +514,97 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
             };
         }
         return null;
+    }
+
+    // Handle file save event from FileWatcherService
+    public handleFileSave(document: vscode.TextDocument, oldContent: string | undefined): void {
+        // Skip processing if no active session
+        if (!this.isSessionActive || !this.terminalMonitor?.isTrackingEnabled()) {
+            return;
+        }
+        
+        const filePath = document.uri.fsPath;
+        const newContent = document.getText();
+        
+        // Skip if we don't have the previous content
+        if (oldContent === undefined) {
+            return;
+        }
+
+        // Generate diff
+        const differences = diffLines(oldContent, newContent);
+        
+        // If there are changes, save them as an action and show dialog
+        if (differences.some(part => part.added || part.removed)) {
+            const changes = differences
+                .filter(part => part.added || part.removed)
+                .map(part => ({
+                    type: part.added ? 'addition' : 'removal',
+                    value: part.value
+                }));
+                
+            const codeChangeAction = {
+                type: 'code-change',
+                timestamp: new Date().toISOString(),
+                file: filePath,
+                changes
+            };
+            
+            // Store the action
+            this.actionManager.addAction(codeChangeAction);
+            
+            // Show dialog with first line of diff
+            this.showDiffDialog(changes, filePath);
+        }
+    }
+    
+    // Show diff dialog and offer to save to session
+    private showDiffDialog(changes: Array<{type: string, value: string}>, filePath: string): void {
+        // Only proceed if there's an active session
+        if (!this.isSessionActive) {
+            return;
+        }
+        
+        // Get the first change and its first line
+        if (changes.length > 0) {
+            // Get filename from path
+            const fileName = filePath.split(/[\\/]/).pop() || filePath;
+            
+            const firstChange = changes[0];
+            const firstLine = firstChange.value.split('\n')[0].trim();
+            const changeType = firstChange.type === 'addition' ? 'Added' : 'Removed';
+            
+            // Show information message with the first line of the diff
+            vscode.window.showInformationMessage(
+                `${fileName}: ${changeType} "${firstLine}"`,
+                'Save to Session'
+            ).then(selection => {
+                // Check again before adding to session (in case session was closed while dialog was open)
+                if (selection === 'Save to Session' && this.isSessionActive) {
+                    // Create a detailed code change object
+                    const codeChangeDetails = {
+                        filename: fileName,
+                        fullPath: filePath,
+                        changes: changes.map(change => ({
+                            type: change.type,
+                            content: change.value
+                        }))
+                    };
+                    
+                    // Add the diff as a note to the current session with the code change details
+                    this.addNoteAction(
+                        `Changed ${fileName}: ${changeType} "${firstLine}"`,
+                        { codeChange: codeChangeDetails }
+                    );
+                }
+            });
+        }
+    }
+
+    dispose(): void {
+        if (this.fileWatcherService) {
+            this.fileWatcherService.stop();
+        }
     }
 }
 

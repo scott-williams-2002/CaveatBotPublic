@@ -9,6 +9,7 @@ export class FileWatcherService {
     private fileContents: Map<string, string> = new Map();
     private actionManager: ActionManager;
     private sessionTreeProvider?: SessionTreeProvider;
+    private isTracking: boolean = false;
 
     constructor(actionManager: ActionManager, sessionTreeProvider?: SessionTreeProvider) {
         this.actionManager = actionManager;
@@ -38,92 +39,55 @@ export class FileWatcherService {
     }
 
     private handleFileSave(document: vscode.TextDocument): void {
-        const filePath = document.uri.fsPath;
-        const newContent = document.getText();
-        const oldContent = this.fileContents.get(filePath);
-
-        // Skip if we don't have the previous content
-        if (oldContent === undefined) {
-            this.fileContents.set(filePath, newContent);
+        // Skip processing if tracking is disabled
+        if (!this.isTracking) {
+            // Still update the stored content
+            this.fileContents.set(document.uri.fsPath, document.getText());
             return;
         }
-
-        // Generate diff
-        const differences = diffLines(oldContent, newContent);
         
-        // If there are changes, save them as an action and show dialog
-        if (differences.some(part => part.added || part.removed)) {
-            const changes = differences
-                .filter(part => part.added || part.removed)
-                .map(part => ({
-                    type: part.added ? 'addition' : 'removal',
-                    value: part.value
-                }));
-                
-            const codeChangeAction = {
-                type: 'code-change',
-                timestamp: new Date().toISOString(),
-                file: filePath,
-                changes
-            };
-            
-            // Store the action
-            this.actionManager.addAction(codeChangeAction);
-            
-            // Show dialog with first line of diff
-            this.showDiffDialog(changes, filePath);
+        const filePath = document.uri.fsPath;
+        const oldContent = this.fileContents.get(filePath);
+        const newContent = document.getText();
+        
+        // Pass to session provider for processing if it exists
+        if (this.sessionTreeProvider) {
+            this.sessionTreeProvider.handleFileSave(document, oldContent);
         }
 
-        // Update stored content
+        // Update stored content regardless
         this.fileContents.set(filePath, newContent);
-    }
-    
-    private showDiffDialog(changes: Array<{type: string, value: string}>, filePath: string): void {
-        // Get the first change and its first line
-        if (changes.length > 0) {
-            const firstChange = changes[0];
-            const firstLine = firstChange.value.split('\n')[0].trim();
-            const changeType = firstChange.type === 'addition' ? 'Added' : 'Removed';
-            
-            // Get filename from path
-            const fileName = filePath.split(/[\\/]/).pop() || filePath;
-            
-            // Show information message with the first line of the diff
-            vscode.window.showInformationMessage(
-                `${fileName}: ${changeType} "${firstLine}"`,
-                'Save to Session'
-            ).then(selection => {
-                if (selection === 'Save to Session') {
-                    // Create a detailed code change object
-                    const codeChangeDetails = {
-                        filename: fileName,
-                        fullPath: filePath,
-                        changes: changes.map(change => ({
-                            type: change.type,
-                            content: change.value
-                        }))
-                    };
-                    
-                    // Add the diff as a note to the current session with the code change details
-                    if (this.sessionTreeProvider) {
-                        this.sessionTreeProvider.addNoteAction(
-                            `Changed ${fileName}: ${changeType} "${firstLine}"`,
-                            { codeChange: codeChangeDetails }
-                        );
-                    } else {
-                        vscode.commands.executeCommand(
-                            'caveatbot.addNote',
-                            `Changed ${fileName}: ${changeType} "${firstLine}"`
-                        );
-                    }
-                }
-            });
-        }
     }
 
     public stop(): void {
         if (this.fileWatcher) {
             this.fileWatcher.dispose();
+        }
+        
+        this.stopTracking();
+    }
+    
+    // Start tracking file changes
+    public startTracking(): void {
+        this.isTracking = true;
+    }
+    
+    // Stop tracking file changes
+    public stopTracking(): void {
+        this.isTracking = false;
+    }
+    
+    // Check if we are currently tracking file changes
+    public isTrackingEnabled(): boolean {
+        return this.isTracking;
+    }
+    
+    // Update tracking state based on session state
+    public updateTrackingState(hasActiveSession: boolean): void {
+        if (hasActiveSession && !this.isTracking) {
+            this.startTracking();
+        } else if (!hasActiveSession && this.isTracking) {
+            this.stopTracking();
         }
     }
 }
