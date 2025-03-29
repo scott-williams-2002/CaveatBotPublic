@@ -1,0 +1,119 @@
+{
+  "name": "caveatbot",
+  "displayName": "CaveatBot",
+  "description": "Track and save terminal commands and output",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:caveatbotCommandExplorer",
+    "onCommand:caveatbot.saveCommands",
+    "onCommand:caveatbot.clearCommands",
+    "onCommand:caveatbot.buttonAction",
+    "onCommand:caveatbot.recordCommand",
+    "onCommand:caveatbot.toggleTracking",
+    "onCommand:caveatbot.viewJson",
+    "onTerminal"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "caveatbot.saveCommands",
+        "title": "Save Terminal Commands",
+        "icon": "$(save)"
+      },
+      {
+        "command": "caveatbot.clearCommands",
+        "title": "Clear Terminal Commands",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "caveatbot.toggleTracking",
+        "title": "Toggle Command Tracking",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "caveatbot.viewJson",
+        "title": "View Commands JSON",
+        "icon": "$(json)"
+      },
+      {
+        "command": "caveatbot.recordCommand",
+        "title": "Record Terminal Command",
+        "icon": "$(add)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "caveatbot-explorer",
+          "title": "CaveatBot",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "caveatbot-explorer": [
+        {
+          "id": "caveatbotCommandExplorer",
+          "name": "Terminal Commands"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "caveatbot.toggleTracking",
+          "when": "view == caveatbotCommandExplorer",
+          "group": "navigation@1"
+        },
+        {
+          "command": "caveatbot.viewJson",
+          "when": "view == caveatbotCommandExplorer",
+          "group": "navigation@2"
+        },
+        {
+          "command": "caveatbot.recordCommand",
+          "when": "view == caveatbotCommandExplorer",
+          "group": "navigation@3"
+        },
+        {
+          "command": "caveatbot.saveCommands",
+          "when": "view == caveatbotCommandExplorer",
+          "group": "navigation@4"
+        },
+        {
+          "command": "caveatbot.clearCommands",
+          "when": "view == caveatbotCommandExplorer",
+          "group": "navigation@5"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.1",
+    "@types/node": "20.2.5",
+    "@typescript-eslint/eslint-plugin": "^5.59.8",
+    "@typescript-eslint/parser": "^5.59.8",
+    "eslint": "^8.41.0",
+    "glob": "^8.1.0",
+    "mocha": "^10.2.0",
+    "typescript": "^5.1.3",
+    "@vscode/test-electron": "^2.3.2"
+  }
+}
