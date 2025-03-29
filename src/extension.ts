@@ -6,6 +6,7 @@ import * as fs from 'fs';
 interface SessionData {
     id: string;
     name: string;
+	description: string;
     startTime: string;
     actions: ActionData[];
     notes: string;
@@ -341,19 +342,34 @@ class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem> {
     
     // Start a new recording session
     async startSession(): Promise<void> {
-        const sessionName = await vscode.window.showInputBox({
-            placeHolder: 'Enter a name for this recording session',
-            prompt: 'New Recording Session'
+        // Use an InputBox with multiline support for the session description
+        const sessionDescription = await vscode.window.showInputBox({
+            prompt: 'Describe what you are working on',
+            placeHolder: 'Enter a description of the task or project you are working on...',
+            ignoreFocusOut: true,
+            // Make the input box taller
+            validateInput: (text) => {
+                if (!text || text.trim().length === 0) {
+                    return 'Please enter a description';
+                }
+                return null;
+            }
         });
         
-        if (sessionName) {
+        if (sessionDescription) {
+            // Extract first two words as session name
+            // SESSIONNAMEHERE - Modify this logic to change how the session name is generated
+            const words = sessionDescription.trim().split(/\s+/);
+            const sessionName = words.slice(0, 2).join(' ');
+            
             const sessionId = `session-${Date.now()}`;
             const newSession: SessionData = {
                 id: sessionId,
                 name: sessionName,
+				description: sessionDescription,
                 startTime: new Date().toISOString(),
                 actions: [],
-                notes: ''
+                notes: sessionDescription // Save the full description as notes
             };
             
             this.sessions.set(sessionId, newSession);
@@ -366,6 +382,7 @@ class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem> {
             );
             sessionItem.description = new Date(newSession.startTime).toLocaleString();
             sessionItem.contextValue = 'session';
+            sessionItem.tooltip = sessionDescription; // Show full description as tooltip
             
             this.sessionItems.set(sessionId, sessionItem);
             this.currentSession = sessionId;
@@ -381,7 +398,7 @@ class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem> {
             // Refresh the tree view
             this.refresh();
             
-            vscode.window.showInformationMessage(`Recording session "${sessionName}" started. Terminal commands will be tracked automatically.`);
+            vscode.window.showInformationMessage(`Recording session "${sessionName}" started with description: "${sessionDescription}". Terminal commands will be tracked automatically.`);
         }
     }
     
@@ -604,6 +621,7 @@ class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem> {
         // Create the final representation
         const jsonData = {
             sessionName: session.name,
+			sessionDescription: session.description,
             startTime: session.startTime,
             commands: commandOutputPairs
         };
