@@ -1,51 +1,102 @@
 {
   "name": "caveatbot",
   "displayName": "CaveatBot",
-  "description": "Track and save terminal commands and output",
+  "description": "Track and record coding sessions with actions and consequences",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.80.0"
   },
+  "enabledApiProposals": [
+    "terminalDataWriteEvent",
+    "terminalShellIntegration"
+  ],
   "categories": [
     "Other"
   ],
   "activationEvents": [
-    "onView:caveatbotCommandExplorer",
-    "onCommand:caveatbot.saveCommands",
-    "onCommand:caveatbot.clearCommands",
-    "onCommand:caveatbot.buttonAction",
-    "onCommand:caveatbot.recordCommand",
-    "onCommand:caveatbot.toggleTracking",
-    "onCommand:caveatbot.viewJson",
+    "onView:caveatbotSessionExplorer",
+    "onCommand:caveatbot.startRecording",
+    "onCommand:caveatbot.addCommand",
+    "onCommand:caveatbot.addConsequence",
+    "onCommand:caveatbot.addNote",
+    "onCommand:caveatbot.exportSession",
+    "onCommand:caveatbot.viewSession",
+    "onCommand:caveatbot.setActiveSession",
+    "onCommand:caveatbot.closeSession",
+    "onCommand:caveatbot.toggleTerminalTracking",
+    "onCommand:caveatbot.manualRecordCommand",
+    "onCommand:caveatbot.startCapture",
+    "onCommand:caveatbot.stopCapture",
+    "onCommand:caveatbot.captureTerminalOutput",
     "onTerminal"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "caveatbot.saveCommands",
-        "title": "Save Terminal Commands",
-        "icon": "$(save)"
+        "command": "caveatbot.startRecording",
+        "title": "Start Recording Session",
+        "icon": "$(record)"
       },
       {
-        "command": "caveatbot.clearCommands",
-        "title": "Clear Terminal Commands",
-        "icon": "$(trash)"
+        "command": "caveatbot.addCommand",
+        "title": "Add Command",
+        "icon": "$(terminal)"
       },
       {
-        "command": "caveatbot.toggleTracking",
-        "title": "Toggle Command Tracking",
-        "icon": "$(eye)"
+        "command": "caveatbot.addConsequence",
+        "title": "Add Consequence",
+        "icon": "$(reactions)"
       },
       {
-        "command": "caveatbot.viewJson",
-        "title": "View Commands JSON",
+        "command": "caveatbot.addNote",
+        "title": "Add Note",
+        "icon": "$(pencil)"
+      },
+      {
+        "command": "caveatbot.exportSession",
+        "title": "Export Session",
+        "icon": "$(export)"
+      },
+      {
+        "command": "caveatbot.viewSession",
+        "title": "View Session JSON",
         "icon": "$(json)"
       },
       {
-        "command": "caveatbot.recordCommand",
-        "title": "Record Terminal Command",
+        "command": "caveatbot.setActiveSession",
+        "title": "Set as Active Session",
+        "icon": "$(check)"
+      },
+      {
+        "command": "caveatbot.closeSession",
+        "title": "Close Current Session",
+        "icon": "$(close)"
+      },
+      {
+        "command": "caveatbot.toggleTerminalTracking",
+        "title": "Toggle Terminal Command Tracking",
+        "icon": "$(terminal-view-icon)"
+      },
+      {
+        "command": "caveatbot.manualRecordCommand",
+        "title": "Manually Record Terminal Command",
         "icon": "$(add)"
+      },
+      {
+        "command": "caveatbot.startCapture",
+        "title": "Start Terminal Capture",
+        "icon": "$(debug-start)"
+      },
+      {
+        "command": "caveatbot.stopCapture",
+        "title": "Stop Terminal Capture",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "caveatbot.captureTerminalOutput",
+        "title": "Capture Terminal Output",
+        "icon": "$(terminal-decoration-success)"
       }
     ],
     "viewsContainers": {
@@ -60,37 +111,76 @@
     "views": {
       "caveatbot-explorer": [
         {
-          "id": "caveatbotCommandExplorer",
-          "name": "Terminal Commands"
+          "id": "caveatbotSessionExplorer",
+          "name": "Recording Sessions"
         }
       ]
     },
     "menus": {
       "view/title": [
         {
-          "command": "caveatbot.toggleTracking",
-          "when": "view == caveatbotCommandExplorer",
+          "command": "caveatbot.startRecording",
+          "when": "view == caveatbotSessionExplorer",
           "group": "navigation@1"
         },
         {
-          "command": "caveatbot.viewJson",
-          "when": "view == caveatbotCommandExplorer",
+          "command": "caveatbot.startCapture",
+          "when": "view == caveatbotSessionExplorer",
           "group": "navigation@2"
         },
         {
-          "command": "caveatbot.recordCommand",
-          "when": "view == caveatbotCommandExplorer",
+          "command": "caveatbot.stopCapture",
+          "when": "view == caveatbotSessionExplorer",
           "group": "navigation@3"
         },
         {
-          "command": "caveatbot.saveCommands",
-          "when": "view == caveatbotCommandExplorer",
-          "group": "navigation@4"
+          "command": "caveatbot.addCommand",
+          "when": "view == caveatbotSessionExplorer",
+          "group": "recording@1"
         },
         {
-          "command": "caveatbot.clearCommands",
-          "when": "view == caveatbotCommandExplorer",
-          "group": "navigation@5"
+          "command": "caveatbot.addConsequence",
+          "when": "view == caveatbotSessionExplorer",
+          "group": "recording@2"
+        },
+        {
+          "command": "caveatbot.addNote",
+          "when": "view == caveatbotSessionExplorer",
+          "group": "recording@3"
+        },
+        {
+          "command": "caveatbot.manualRecordCommand",
+          "when": "view == caveatbotSessionExplorer",
+          "group": "recording@4"
+        },
+        {
+          "command": "caveatbot.closeSession",
+          "when": "view == caveatbotSessionExplorer",
+          "group": "recording@5"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "caveatbot.exportSession",
+          "when": "view == caveatbotSessionExplorer && viewItem == session",
+          "group": "inline@1"
+        },
+        {
+          "command": "caveatbot.viewSession",
+          "when": "view == caveatbotSessionExplorer && viewItem == session",
+          "group": "inline@2"
+        },
+        {
+          "command": "caveatbot.setActiveSession",
+          "when": "view == caveatbotSessionExplorer && viewItem == session",
+          "group": "inline@3"
+        }
+      ],
+      "terminal/title": [
+        {
+          "command": "caveatbot.captureTerminalOutput",
+          "group": "navigation",
+          "when": "caveatbot.terminalTracking"
         }
       ]
     }
