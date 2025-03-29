@@ -19,8 +19,6 @@
     "onCommand:caveatbot.addCommand",
     "onCommand:caveatbot.addConsequence",
     "onCommand:caveatbot.addNote",
-    "onCommand:caveatbot.exportSession",
-    "onCommand:caveatbot.viewSession",
     "onCommand:caveatbot.setActiveSession",
     "onCommand:caveatbot.closeSession",
     "onCommand:caveatbot.toggleTerminalTracking",
@@ -28,7 +26,10 @@
     "onCommand:caveatbot.startCapture",
     "onCommand:caveatbot.stopCapture",
     "onCommand:caveatbot.captureTerminalOutput",
-    "onTerminal"
+    "onCommand:caveatbot.viewSessionJson",
+    "onTerminal",
+    "onCommand:caveatbot.deleteSession",
+    "onCommand:caveatbot.deleteAction"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -54,14 +55,9 @@
         "icon": "$(pencil)"
       },
       {
-        "command": "caveatbot.exportSession",
-        "title": "Export Session",
-        "icon": "$(export)"
-      },
-      {
-        "command": "caveatbot.viewSession",
+        "command": "caveatbot.viewSessionJson",
         "title": "View Session JSON",
-        "icon": "$(json)"
+        "icon": "$(preview)"
       },
       {
         "command": "caveatbot.setActiveSession",
@@ -97,6 +93,16 @@
         "command": "caveatbot.captureTerminalOutput",
         "title": "Capture Terminal Output",
         "icon": "$(terminal-decoration-success)"
+      },
+      {
+        "command": "caveatbot.deleteSession",
+        "title": "Delete Session",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "caveatbot.deleteAction",
+        "title": "Delete Item",
+        "icon": "$(trash)"
       }
     ],
     "viewsContainers": {
@@ -161,19 +167,24 @@
       ],
       "view/item/context": [
         {
-          "command": "caveatbot.exportSession",
+          "command": "caveatbot.viewSessionJson",
           "when": "view == caveatbotSessionExplorer && viewItem == session",
-          "group": "inline@1"
-        },
-        {
-          "command": "caveatbot.viewSession",
-          "when": "view == caveatbotSessionExplorer && viewItem == session",
-          "group": "inline@2"
+          "group": "inline@0"
         },
         {
           "command": "caveatbot.setActiveSession",
           "when": "view == caveatbotSessionExplorer && viewItem == session",
+          "group": "inline@2"
+        },
+        {
+          "command": "caveatbot.deleteSession",
+          "when": "view == caveatbotSessionExplorer && viewItem == session",
           "group": "inline@3"
+        },
+        {
+          "command": "caveatbot.deleteAction",
+          "when": "view == caveatbotSessionExplorer && viewItem =~ /command|consequence|note/",
+          "group": "inline@1"
         }
       ],
       "terminal/title": [

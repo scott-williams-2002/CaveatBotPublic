@@ -519,53 +519,96 @@ class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem> {
         return this.currentSession;
     }
     
-    // Export session to file
-    async exportSession(sessionId: string): Promise<void> {
+    // View session in standardized JSON format
+    async viewSessionJson(sessionId: string): Promise<void> {
         const session = this.sessions.get(sessionId);
         if (!session) {
             vscode.window.showErrorMessage('Session not found');
             return;
         }
         
-        const options: vscode.SaveDialogOptions = {
-            defaultUri: vscode.Uri.file(path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', `${session.name.replace(/\s+/g, '-')}.json`)),
-            filters: {
-                'JSON files': ['json']
-            }
-        };
+        // Get the JSON representation
+        const jsonContent = this.getSessionCommandsJson(sessionId);
         
-        const fileUri = await vscode.window.showSaveDialog(options);
-        if (fileUri) {
-            try {
-                fs.writeFileSync(fileUri.fsPath, JSON.stringify(session, null, 2));
-                vscode.window.showInformationMessage(`Session exported to ${fileUri.fsPath}`);
-            } catch (error) {
-                vscode.window.showErrorMessage(`Failed to export session: ${error}`);
-            }
+        try {
+            // Create a file path for JSON view
+            const jsonFilePath = path.join(this.sessionsStoragePath, `${sessionId}-view.json`);
+            
+            // Write the JSON data to the file
+            fs.writeFileSync(jsonFilePath, jsonContent);
+            
+            // Open the JSON view
+            const document = await vscode.workspace.openTextDocument(jsonFilePath);
+            await vscode.window.showTextDocument(document);
+            
+            // Apply JSON language mode to get formatting
+            vscode.languages.setTextDocumentLanguage(document, 'json');
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to show JSON view: ${error}`);
         }
     }
     
-    // View session file in editor
-    async viewSessionFile(sessionId: string): Promise<void> {
+    // Get a simplified JSON representation of the session focusing on commands and their outputs
+    getSessionCommandsJson(sessionId: string): string {
         const session = this.sessions.get(sessionId);
         if (!session) {
-            vscode.window.showErrorMessage('Session not found');
-            return;
+            return '{}';
         }
         
-        const filePath = path.join(this.sessionsStoragePath, `${sessionId}.json`);
-        try {
-            // Check if file exists, create if not
-            if (!fs.existsSync(filePath)) {
-                this.saveSession(sessionId);
+        // Extract commands and consequences (outputs) and pair them
+        const commandOutputPairs: {command: string, output: string, success: boolean, timestamp: string}[] = [];
+        
+        let lastCommand: {content: string, timestamp: string} | null = null;
+        
+        for (const action of session.actions) {
+            if (action.type === 'command') {
+                // If there was a previous command without output, add it with empty output
+                if (lastCommand) {
+                    commandOutputPairs.push({
+                        command: lastCommand.content,
+                        output: '',
+                        success: true,
+                        timestamp: lastCommand.timestamp
+                    });
+                }
+                
+                // Store this command
+                lastCommand = {
+                    content: action.content,
+                    timestamp: action.timestamp
+                };
+            } else if (action.type === 'consequence' && lastCommand) {
+                // Pair with the last command
+                commandOutputPairs.push({
+                    command: lastCommand.content,
+                    output: action.content,
+                    success: action.success || false,
+                    timestamp: action.timestamp
+                });
+                
+                // Reset last command to avoid duplicates
+                lastCommand = null;
             }
-            
-            // Open the file in a new editor
-            const document = await vscode.workspace.openTextDocument(filePath);
-            await vscode.window.showTextDocument(document);
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to open session file: ${error}`);
         }
+        
+        // For any remaining commands with no output, add them with empty output
+        if (lastCommand) {
+            commandOutputPairs.push({
+                command: lastCommand.content,
+                output: '',
+                success: true,
+                timestamp: lastCommand.timestamp
+            });
+        }
+        
+        // Create the final representation
+        const jsonData = {
+            sessionName: session.name,
+            startTime: session.startTime,
+            commands: commandOutputPairs
+        };
+        
+        return JSON.stringify(jsonData, null, 2);
     }
     
     // Set a session as the active session
@@ -596,6 +639,113 @@ class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem> {
             vscode.window.showInformationMessage(`Session "${sessionName}" was closed. Terminal command tracking stopped.`);
         }
     }
+
+    // Delete a session
+    async deleteSession(sessionId: string): Promise<void> {
+        if (!this.sessions.has(sessionId)) {
+            vscode.window.showErrorMessage('Session not found');
+            return;
+        }
+        
+        // Get session name for message
+        const sessionName = this.sessions.get(sessionId)?.name;
+        
+        // Confirm deletion
+        const confirmation = await vscode.window.showWarningMessage(
+            `Are you sure you want to delete the session "${sessionName}"?`,
+            { modal: true },
+            'Delete',
+            'Cancel'
+        );
+        
+        if (confirmation !== 'Delete') {
+            return;
+        }
+        
+        // If this is the current session, close it first
+        if (this.currentSession === sessionId) {
+            this.closeCurrentSession();
+        }
+        
+        // Delete session from memory
+        this.sessions.delete(sessionId);
+        this.sessionItems.delete(sessionId);
+        
+        // Delete session file
+        const filePath = path.join(this.sessionsStoragePath, `${sessionId}.json`);
+        try {
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+            
+            // Also delete any view files
+            const viewFilePath = path.join(this.sessionsStoragePath, `${sessionId}-view.json`);
+            if (fs.existsSync(viewFilePath)) {
+                fs.unlinkSync(viewFilePath);
+            }
+            
+            vscode.window.showInformationMessage(`Session "${sessionName}" deleted.`);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to delete session file: ${error}`);
+        }
+        
+        // Refresh the tree view
+        this.refresh();
+    }
+    
+    // Delete an action from a session
+    async deleteAction(sessionId: string, actionIndex: number): Promise<void> {
+        const session = this.sessions.get(sessionId);
+        if (!session) {
+            vscode.window.showErrorMessage('Session not found');
+            return;
+        }
+        
+        if (actionIndex < 0 || actionIndex >= session.actions.length) {
+            vscode.window.showErrorMessage('Action not found');
+            return;
+        }
+        
+        // Get action type for message
+        const actionType = session.actions[actionIndex].type;
+        const actionContent = session.actions[actionIndex].content.substring(0, 20) + 
+                            (session.actions[actionIndex].content.length > 20 ? '...' : '');
+        
+        // Confirm deletion
+        const confirmation = await vscode.window.showWarningMessage(
+            `Are you sure you want to delete this ${actionType}: "${actionContent}"?`,
+            { modal: true },
+            'Delete',
+            'Cancel'
+        );
+        
+        if (confirmation !== 'Delete') {
+            return;
+        }
+        
+        // Remove the action
+        session.actions.splice(actionIndex, 1);
+        
+        // Save the session
+        this.saveSession(sessionId);
+        
+        // Refresh the tree view
+        this.refresh();
+        
+        vscode.window.showInformationMessage(`${actionType} deleted.`);
+    }
+    
+    // Extract action index from item ID
+    getActionIndexFromItemId(itemId: string): { sessionId: string, actionIndex: number } | null {
+        const match = itemId.match(/^(session-\d+)-action-(\d+)$/);
+        if (match) {
+            return {
+                sessionId: match[1],
+                actionIndex: parseInt(match[2], 10)
+            };
+        }
+        return null;
+    }
 }
 
 // Session item for the tree view
@@ -606,6 +756,23 @@ class SessionItem extends vscode.TreeItem {
         public readonly collapsibleState: vscode.TreeItemCollapsibleState
     ) {
         super(label, collapsibleState);
+        
+        // Set context value for command/session items to enable right-click menus
+        if (this.id.includes('-action-')) {
+            // This is an action item
+            this.contextValue = this.id.includes('-action-') ? 
+                this.id.split('-action-')[1].split('-')[0] : 'action';
+        } else if (this.id.startsWith('session-')) {
+            // This is a session item
+            this.contextValue = 'session';
+            
+            // Add JSON view command when clicking on the session
+            this.command = {
+                title: "View JSON",
+                command: "caveatbot.viewSessionJson",
+                arguments: [this]
+            };
+        }
     }
 }
 
@@ -685,18 +852,6 @@ export function activate(context: vscode.ExtensionContext) {
         await sessionTreeProvider.addNoteAction();
     });
     
-    const exportSessionDisposable = vscode.commands.registerCommand('caveatbot.exportSession', async (item: SessionItem) => {
-        if (item.contextValue === 'session') {
-            await sessionTreeProvider.exportSession(item.id);
-        }
-    });
-    
-    const viewSessionDisposable = vscode.commands.registerCommand('caveatbot.viewSession', async (item: SessionItem) => {
-        if (item.contextValue === 'session') {
-            await sessionTreeProvider.viewSessionFile(item.id);
-        }
-    });
-    
     const setActiveSessionDisposable = vscode.commands.registerCommand('caveatbot.setActiveSession', (item: SessionItem) => {
         if (item.contextValue === 'session') {
             sessionTreeProvider.setActiveSession(item.id);
@@ -705,6 +860,28 @@ export function activate(context: vscode.ExtensionContext) {
     
     const closeSessionDisposable = vscode.commands.registerCommand('caveatbot.closeSession', () => {
         sessionTreeProvider.closeCurrentSession();
+    });
+    
+    // Register the view JSON command
+    const viewSessionJsonDisposable = vscode.commands.registerCommand('caveatbot.viewSessionJson', async (item: SessionItem) => {
+        if (item.contextValue === 'session') {
+            await sessionTreeProvider.viewSessionJson(item.id);
+        }
+    });
+
+    // Register delete session command
+    const deleteSessionDisposable = vscode.commands.registerCommand('caveatbot.deleteSession', async (item: SessionItem) => {
+        if (item.contextValue === 'session') {
+            await sessionTreeProvider.deleteSession(item.id);
+        }
+    });
+    
+    // Register delete action command
+    const deleteActionDisposable = vscode.commands.registerCommand('caveatbot.deleteAction', async (item: SessionItem) => {
+        const actionInfo = sessionTreeProvider.getActionIndexFromItemId(item.id);
+        if (actionInfo) {
+            await sessionTreeProvider.deleteAction(actionInfo.sessionId, actionInfo.actionIndex);
+        }
     });
     
     // Create a status bar item
@@ -745,11 +922,12 @@ export function activate(context: vscode.ExtensionContext) {
         addCommandDisposable,
         addConsequenceDisposable,
         addNoteDisposable,
-        exportSessionDisposable,
-        viewSessionDisposable,
         setActiveSessionDisposable,
         closeSessionDisposable,
         captureTerminalOutputDisposable,
+        viewSessionJsonDisposable,
+        deleteSessionDisposable,
+        deleteActionDisposable,
         statusBarItem,
         terminalStatusBarItem,
         sessionTreeView,
