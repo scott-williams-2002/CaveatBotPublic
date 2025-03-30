@@ -6,6 +6,8 @@ import { SessionData } from '../models/interfaces';
 import * as fs from 'fs';
 // Update Groq import to use require syntax
 const Groq = require('groq-sdk');
+// Import the vectorDB service
+import { storeSessionData } from './vectorDB';
 
 // Load environment variables from a .env file in a custom directory
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -205,7 +207,7 @@ export async function handleAction(action: any): Promise<any> {
                 parsedResponse.originalOutput = action.output;
                 parsedResponse.success = action.success;
                 
-                vscode.window.showInformationMessage('Command processed successfully');
+                
                 return parsedResponse;
             } catch (error) {
                 vscode.window.showErrorMessage('Failed to process command content');
@@ -497,7 +499,7 @@ export async function generateSessionSummary(processedResults: any[], sessionDat
         }
         
         // Add metadata to the summary
-        return {
+        const finalSummary = {
             ...sessionSummary,
             metadata: {
                 sessionName: sessionData.name,
@@ -506,9 +508,14 @@ export async function generateSessionSummary(processedResults: any[], sessionDat
                 totalProcessedActions: processedResults.length
             }
         };
+        
+        // Store the session data in the vector database
+        await storeSessionData(finalSummary);
+        
+        return finalSummary;
     } catch (error) {
         // Provide a fallback summary with screenshots included
-        return {
+        const fallbackSummary = {
             error: "Failed to parse session summary",
             rawContent: finalResponse.content.toString(),
             screenshots: screenshotsData.map(s => ({
@@ -523,6 +530,11 @@ export async function generateSessionSummary(processedResults: any[], sessionDat
                 totalProcessedActions: processedResults.length
             }
         };
+        
+        // Still try to store the fallback session data
+        await storeSessionData(fallbackSummary);
+        
+        return fallbackSummary;
     }
 }
 

@@ -9,6 +9,7 @@ import { SessionTreeProvider, SessionItem } from './services/Session';
 import { exec } from 'child_process';
 import * as os from 'os';
 import { beginWorkflow } from './services/dataIngestionService';
+import { ChatHandler } from './services/chatHandler';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Congratulations, your extension "caveatbot" is now active!');
@@ -24,6 +25,9 @@ export function activate(context: vscode.ExtensionContext) {
     
     // Initialize file watcher service in the session provider
     sessionTreeProvider.initializeFileWatcherService();
+    
+    // Create chat handler
+    const chatHandler = new ChatHandler(context);
     
     // Register the tree view
     const sessionTreeView = vscode.window.createTreeView('caveatbotSessionExplorer', {
@@ -182,6 +186,13 @@ export function activate(context: vscode.ExtensionContext) {
             }
         },
     );
+
+    // Register open chat command
+    const openChatDisposable = vscode.commands.registerCommand('caveatbot.openChat', () => {
+        chatHandler.openChatInterface();
+    });
+    
+    context.subscriptions.push(openChatDisposable);
 
     // This ensures the recording status is correctly initialized on startup
     context.subscriptions.push(

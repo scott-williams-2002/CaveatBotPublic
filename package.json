@@ -8,7 +8,8 @@
   },
   "enabledApiProposals": [
     "terminalDataWriteEvent",
-    "terminalShellIntegration"
+    "terminalShellIntegration",
+    "chatParticipant"
   ],
   "categories": [
     "Other"
@@ -28,7 +29,8 @@
     "onTerminal",
     "onCommand:caveatbot.deleteSession",
     "onCommand:caveatbot.deleteAction",
-    "onCommand:caveatbot.ingestData"
+    "onCommand:caveatbot.ingestData",
+    "onCommand:caveatbot.openChat"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -105,6 +107,11 @@
         "command": "caveatbot.ingestData",
         "title": "CaveatBot: Ingest Data",
         "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "caveatbot.openChat",
+        "title": "CaveatBot: Open Chat",
+        "icon": "$(comment-discussion)"
       }
     ],
     "viewsContainers": {
@@ -150,6 +157,11 @@
           "command": "caveatbot.closeSession",
           "when": "view == caveatbotSessionExplorer",
           "group": "recording@5"
+        },
+        {
+          "command": "caveatbot.openChat",
+          "when": "view == caveatbotSessionExplorer",
+          "group": "recording@6"
         }
       ],
       "view/item/context": [
@@ -196,7 +208,16 @@
           "description": "The directory to monitor for screenshots"
         }
       }
-    }
+    },
+    "chatParticipants": [
+      {
+        "id": "caveatbot.assistant",
+        "name": "caveatbot",
+        "fullName": "CaveatBot Assistant",
+        "description": "Retrieval-augmented coding assistant that uses your session data",
+        "isSticky": true
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -208,9 +229,11 @@
   },
   "dependencies": {
     "@langchain/groq": "^0.2.0",
+    "@pinecone-database/pinecone": "^5.1.1",
     "diff": "^5.2.0",
     "dotenv": "^16.4.7",
-    "groq-sdk": "^0.17.0"
+    "groq-sdk": "^0.17.0",
+    "vscode": "^1.1.37"
   },
   "devDependencies": {
     "@types/diff": "^5.0.3",
