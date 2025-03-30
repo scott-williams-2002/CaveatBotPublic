@@ -319,6 +319,8 @@ export async function handleAction(action: any): Promise<any> {
                 try {
                     if (response.choices[0].message.content) {
                         parsedResponse = JSON.parse(response.choices[0].message.content);
+                        // Add the screenshot path to the response
+                        parsedResponse.screenshotPath = imagePath;
                         vscode.window.showInformationMessage('Screenshot analyzed successfully');
                         return parsedResponse;
                     } else {
@@ -383,13 +385,14 @@ export async function generateSessionSummary(processedResults: any[], sessionDat
         links: n.result.links || []
     }));
     
-    // Step 5: Extract all screenshots with their analysis
+    // Step 5: Extract all screenshots with their analysis including paths
     const screenshotsData = screenshotActions.map(s => ({
         actionSummary: s.result.actionSummary || '',
         mainIdeas: s.result.mainIdeas || [],
         codeSnippets: s.result.codeSnippets || [],
         commands: s.result.commands || [],
-        links: s.result.links || []
+        links: s.result.links || [],
+        path: s.result.screenshotPath || ''  // Include the screenshot path
     }));
     
     // Step 6: Pre-process command statistics
@@ -426,7 +429,14 @@ export async function generateSessionSummary(processedResults: any[], sessionDat
                          ...
                        ],
                        "keyConcepts": [<strings>],
-                       "sessionSummary": <string>
+                       "sessionSummary": <string>,
+                       "screenshots": [
+                         {
+                           "path": <string>,
+                           "summary": <string>,
+                           "keyElements": [<strings>]
+                         }
+                       ]
                      }`
         },
         { 
@@ -455,13 +465,18 @@ export async function generateSessionSummary(processedResults: any[], sessionDat
                      
                      Screenshots (${screenshotsData.length} items):
                      ${JSON.stringify({
-                         summaries: screenshotsData.map(s => s.actionSummary),
-                         mainIdeas: flattenAndDeduplicate(screenshotsData.map(s => s.mainIdeas)),
-                         codeSnippets: flattenAndDeduplicate(screenshotsData.map(s => s.codeSnippets)),
-                         commands: flattenAndDeduplicate(screenshotsData.map(s => s.commands))
+                         details: screenshotsData.map(s => ({
+                             path: s.path,
+                             summary: s.actionSummary,
+                             mainIdeas: s.mainIdeas
+                         })),
+                         allMainIdeas: flattenAndDeduplicate(screenshotsData.map(s => s.mainIdeas)),
+                         allCodeSnippets: flattenAndDeduplicate(screenshotsData.map(s => s.codeSnippets)),
+                         allCommands: flattenAndDeduplicate(screenshotsData.map(s => s.commands))
                      }, null, 2)}
                      
-                     Format the response exactly according to the JSON schema in your system instructions.`
+                     Format the response exactly according to the JSON schema in your system instructions.
+                     Be sure to include the screenshots array with path, summary, and keyElements for each screenshot.`
         },
     ];
     
@@ -471,6 +486,15 @@ export async function generateSessionSummary(processedResults: any[], sessionDat
     
     try {
         const sessionSummary = JSON.parse(finalResponse.content.toString());
+        
+        // If the model didn't generate screenshots array, create it manually
+        if (!sessionSummary.screenshots && screenshotsData.length > 0) {
+            sessionSummary.screenshots = screenshotsData.map(s => ({
+                path: s.path,
+                summary: s.actionSummary,
+                keyElements: s.mainIdeas
+            }));
+        }
         
         // Add metadata to the summary
         return {
@@ -483,9 +507,15 @@ export async function generateSessionSummary(processedResults: any[], sessionDat
             }
         };
     } catch (error) {
+        // Provide a fallback summary with screenshots included
         return {
             error: "Failed to parse session summary",
             rawContent: finalResponse.content.toString(),
+            screenshots: screenshotsData.map(s => ({
+                path: s.path,
+                summary: s.actionSummary,
+                keyElements: s.mainIdeas
+            })),
             metadata: {
                 sessionName: sessionData.name,
                 sessionDescription: sessionData.description,
