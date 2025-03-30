@@ -8,6 +8,7 @@ import {
   searchCommandsIndex,
   searchKeyConceptsIndex
 } from './vectorDB';
+import { generatePolishedResponse } from './finalResponseGen';
 
 // Chat handler class
 export class ChatHandler {
@@ -53,6 +54,9 @@ export class ChatHandler {
                     switch (message.command) {
                         case 'sendMessage':
                             await this.handleChatMessage(message.text, this.chatPanel!);
+                            break;
+                        case 'openScreenshot':
+                            await this.openScreenshotInVSCode(message.path);
                             break;
                     }
                 },
@@ -194,6 +198,65 @@ export class ChatHandler {
                         opacity: 0.8;
                         margin-bottom: 2px;
                     }
+                    
+                    .screenshots-container {
+                        margin-top: 15px;
+                        border-top: 1px solid var(--vscode-panel-border);
+                        padding-top: 10px;
+                    }
+                    
+                    .screenshots-heading {
+                        font-weight: bold;
+                        margin-bottom: 10px;
+                    }
+                    
+                    .screenshot-item {
+                        margin-bottom: 20px;
+                        background-color: var(--vscode-editor-inactiveSelectionBackground);
+                        padding: 10px;
+                        border-radius: 6px;
+                    }
+                    
+                    .screenshot-image {
+                        max-width: 100%;
+                        margin-top: 8px;
+                        border: 1px solid var(--vscode-panel-border);
+                        border-radius: 4px;
+                    }
+                    
+                    .screenshot-path {
+                        font-family: var(--vscode-editor-font-family);
+                        font-size: 12px;
+                        opacity: 0.7;
+                        margin-bottom: 5px;
+                        word-break: break-all;
+                    }
+                    
+                    .screenshot-summary {
+                        margin-bottom: 8px;
+                    }
+                    
+                    .screenshot-view-btn {
+                        background-color: var(--vscode-button-background);
+                        color: var(--vscode-button-foreground);
+                        border: none;
+                        padding: 5px 10px;
+                        border-radius: 2px;
+                        cursor: pointer;
+                        margin-top: 10px;
+                        display: inline-block;
+                    }
+                    
+                    .screenshot-view-btn:hover {
+                        background-color: var(--vscode-button-hoverBackground);
+                    }
+                    
+                    .screenshot-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: flex-start;
+                        margin-bottom: 5px;
+                    }
                 </style>
             </head>
             <body>
@@ -206,6 +269,10 @@ export class ChatHandler {
                             What would you like to know?
                         </div>
                     </div>
+                </div>
+                <div id="screenshots-container" class="screenshots-container" style="display: none;">
+                    <div class="screenshots-heading">Here are some relevant screenshots you took along with their description:</div>
+                    <div id="screenshots-list"></div>
                 </div>
                 <div class="input-container">
                     <textarea id="message-input" placeholder="Type your message..." rows="2"></textarea>
@@ -220,6 +287,8 @@ export class ChatHandler {
                         const chatContainer = document.getElementById('chat-container');
                         const messageInput = document.getElementById('message-input');
                         const sendButton = document.getElementById('send-button');
+                        const screenshotsContainer = document.getElementById('screenshots-container');
+                        const screenshotsList = document.getElementById('screenshots-list');
                         
                         // Function to add a message to the chat
                         function addMessage(text, isUser = false) {
@@ -263,6 +332,67 @@ export class ChatHandler {
                             chatContainer.scrollTop = chatContainer.scrollHeight;
                         }
                         
+                        // Function to display screenshots
+                        function displayScreenshots(screenshots) {
+                            // Clear previous screenshots
+                            screenshotsList.innerHTML = '';
+                            
+                            // If no screenshots, hide the container
+                            if (!screenshots || screenshots.length === 0) {
+                                screenshotsContainer.style.display = 'none';
+                                return;
+                            }
+                            
+                            // Show and populate screenshots
+                            screenshotsContainer.style.display = 'block';
+                            
+                            screenshots.forEach(screenshot => {
+                                const item = document.createElement('div');
+                                item.className = 'screenshot-item';
+                                
+                                const header = document.createElement('div');
+                                header.className = 'screenshot-header';
+                                
+                                const pathDiv = document.createElement('div');
+                                pathDiv.className = 'screenshot-path';
+                                pathDiv.textContent = screenshot.path;
+                                
+                                const viewBtn = document.createElement('button');
+                                viewBtn.className = 'screenshot-view-btn';
+                                viewBtn.textContent = 'View in VS Code';
+                                viewBtn.addEventListener('click', () => {
+                                    vscode.postMessage({
+                                        command: 'openScreenshot',
+                                        path: screenshot.path
+                                    });
+                                });
+                                
+                                header.appendChild(pathDiv);
+                                header.appendChild(viewBtn);
+                                
+                                const summary = document.createElement('div');
+                                summary.className = 'screenshot-summary';
+                                summary.textContent = screenshot.summary;
+                                
+                                // Try to display the image from the file path
+                                const img = document.createElement('img');
+                                img.className = 'screenshot-image';
+                                img.alt = 'Screenshot';
+                                img.src = vscode.Uri.file(screenshot.path).with({ scheme: 'vscode-resource' }).toString();
+                                img.onerror = () => {
+                                    img.alt = 'Could not load screenshot';
+                                    img.style.display = 'none';
+                                    console.error('Failed to load image:', screenshot.path);
+                                };
+                                
+                                item.appendChild(header);
+                                item.appendChild(summary);
+                                item.appendChild(img);
+                                
+                                screenshotsList.appendChild(item);
+                            });
+                        }
+                        
                         // Function to update the typing indicator with a new status
                         function updateTypingStatus(status) {
                             const typingIndicator = document.querySelector('.typing-indicator .bot-message');
@@ -289,6 +419,9 @@ export class ChatHandler {
                             typingDiv.innerHTML = '<div class="message bot-message">Processing your request...</div>';
                             chatContainer.appendChild(typingDiv);
                             chatContainer.scrollTop = chatContainer.scrollHeight;
+                            
+                            // Hide screenshots when a new query is made
+                            screenshotsContainer.style.display = 'none';
                             
                             // Send message to extension
                             vscode.postMessage({
@@ -326,6 +459,10 @@ export class ChatHandler {
                                     // Update typing indicator with status
                                     updateTypingStatus(message.text);
                                     break;
+                                case 'screenshots':
+                                    // Display screenshots
+                                    displayScreenshots(message.screenshots);
+                                    break;
                             }
                         });
                         
@@ -337,7 +474,7 @@ export class ChatHandler {
             </html>`;
     }
 
-    // Simplified handle chat message that just logs and returns the input
+    // Modified handle chat message to provide screenshot viewing options
     private async handleChatMessage(userMessage: string, panel: vscode.WebviewPanel): Promise<void> {
         // Log the message to the console
         console.log(`User message: ${userMessage}`);
@@ -357,6 +494,7 @@ export class ChatHandler {
         });
         
         let response: string;
+        let screenshotsToShow: any[] = [];
 
         if (queryType.type === 'technical') {
             panel.webview.postMessage({
@@ -379,6 +517,23 @@ export class ChatHandler {
             });
             const screenshotsResults = await searchScreenshotsIndex(keywords);
             
+            // Log screenshot paths if available
+            if (screenshotsResults && screenshotsResults.length > 0) {
+                console.log('Found screenshots:');
+                screenshotsResults.forEach(result => {
+                    console.log(`Screenshot path: ${result.path}`);
+                });
+                
+                // Save screenshots for display
+                screenshotsToShow = screenshotsResults.map(result => ({
+                    path: path.normalize(result.path),  // Normalize the path
+                    summary: result.summary,
+                    score: result.score
+                }));
+            } else {
+                console.log('No screenshots found in the search index.');
+            }
+            
             panel.webview.postMessage({
                 type: 'status',
                 text: 'Searching commands index...'
@@ -393,11 +548,17 @@ export class ChatHandler {
             
             panel.webview.postMessage({
                 type: 'status',
-                text: 'Formatting results...'
+                text: 'Generating comprehensive response with Groq LLM...'
             });
             
-            // Format the response with the search results
-            response = this.formatSearchResults(keywords, screenshotsResults, commandsResults, conceptsResults);
+            // Generate a polished response using Groq and LangChain
+            response = await generatePolishedResponse(
+                userMessage,
+                keywords, 
+                screenshotsResults, 
+                commandsResults, 
+                conceptsResults
+            );
         } else {
             response = "This appears to be a non-technical query. I'm designed to help with technical questions related to your recorded coding sessions. Please try asking about code, commands, or technical concepts.";
         }
@@ -408,61 +569,73 @@ export class ChatHandler {
                 type: 'response',
                 text: response
             });
+            
+            // Send screenshots if available
+            if (screenshotsToShow.length > 0) {
+                panel.webview.postMessage({
+                    type: 'screenshots',
+                    screenshots: screenshotsToShow
+                });
+                
+                // Show a notification with option to open screenshots in VS Code
+                if (screenshotsToShow.length === 1) {
+                    vscode.window.showInformationMessage(
+                        `Found 1 relevant screenshot. Do you want to open it in VS Code?`,
+                        'Open Screenshot'
+                    ).then(selection => {
+                        if (selection === 'Open Screenshot') {
+                            this.openScreenshotInVSCode(screenshotsToShow[0].path);
+                        }
+                    });
+                } else {
+                    vscode.window.showInformationMessage(
+                        `Found ${screenshotsToShow.length} relevant screenshots. Do you want to open them in VS Code?`,
+                        'Open First', 'Open All', 'Choose Screenshot'
+                    ).then(async selection => {
+                        if (selection === 'Open First') {
+                            this.openScreenshotInVSCode(screenshotsToShow[0].path);
+                        } else if (selection === 'Open All') {
+                            for (const screenshot of screenshotsToShow) {
+                                await this.openScreenshotInVSCode(screenshot.path);
+                            }
+                        } else if (selection === 'Choose Screenshot') {
+                            const options = screenshotsToShow.map((ss, index) => ({
+                                label: `Screenshot ${index + 1}`,
+                                description: ss.summary.substring(0, 60) + (ss.summary.length > 60 ? '...' : ''),
+                                path: ss.path
+                            }));
+                            
+                            const selected = await vscode.window.showQuickPick(options, {
+                                placeHolder: 'Select a screenshot to open'
+                            });
+                            
+                            if (selected) {
+                                this.openScreenshotInVSCode(selected.path);
+                            }
+                        }
+                    });
+                }
+            }
         }
     }
 
-    // Helper method to format search results in a readable way
-    private formatSearchResults(keywords: string[], screenshots: any[], commands: any[], concepts: any[]): string {
-        const hasResults = screenshots.length > 0 || commands.length > 0 || concepts.length > 0;
-        
-        if (!hasResults) {
-            return `I couldn't find any information related to your query with keywords: ${keywords.join(', ')}. Could you please try rephrasing your question or using different terms?`;
+    // Opens a screenshot in a new VS Code window
+    private async openScreenshotInVSCode(screenshotPath: string): Promise<void> {
+        try {
+            if (!fs.existsSync(screenshotPath)) {
+                console.error(`Screenshot not found: ${screenshotPath}`);
+                vscode.window.showErrorMessage(`Screenshot not found: ${screenshotPath}`);
+                return;
+            }
+            
+            // Open the screenshot using VS Code's document viewing functionality
+            const uri = vscode.Uri.file(screenshotPath);
+            await vscode.commands.executeCommand('vscode.open', uri);
+            console.log(`Opened screenshot: ${screenshotPath}`);
+        } catch (error) {
+            console.error(`Failed to open screenshot: ${error}`);
+            vscode.window.showErrorMessage(`Failed to open screenshot: ${error}`);
         }
-        
-        let response = `Here's what I found related to: ${keywords.join(', ')}\n\n`;
-        
-        // Add screenshots results
-        if (screenshots.length > 0) {
-            response += `📸 **Screenshots (${screenshots.length}):**\n\n`;
-            screenshots.forEach((result, index) => {
-                response += `${index + 1}. **Session**: ${result.session}\n`;
-                response += `   **Summary**: ${result.summary}\n`;
-                if (result.keyElements?.length > 0) {
-                    response += `   **Key Elements**: ${result.keyElements.join(', ')}\n`;
-                }
-                response += `   **Path**: ${result.path}\n\n`;
-            });
-        }
-        
-        // Add commands results
-        if (commands.length > 0) {
-            response += `⌨️ **Commands (${commands.length}):**\n\n`;
-            commands.forEach((result, index) => {
-                response += `${index + 1}. \`${result.command}\` (used ${result.frequency} times)\n`;
-                if (result.examples?.length > 0) {
-                    response += `   **Example**: ${result.examples[0]}\n`;
-                }
-                if (result.directories?.length > 0) {
-                    response += `   **Common Directories**: ${result.directories.slice(0, 3).join(', ')}\n`;
-                }
-                response += '\n';
-            });
-        }
-        
-        // Add concepts results
-        if (concepts.length > 0) {
-            response += `💡 **Key Concepts (${concepts.length}):**\n\n`;
-            concepts.forEach((result, index) => {
-                response += `${index + 1}. **${result.concept}**\n`;
-                response += `   **Session**: ${result.relatedSession}\n`;
-                if (result.workflowPatterns?.length > 0) {
-                    response += `   **Related Workflows**: ${result.workflowPatterns.slice(0, 3).join(', ')}\n`;
-                }
-                response += '\n';
-            });
-        }
-        
-        return response;
     }
 
     // For cleanup
