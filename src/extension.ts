@@ -6,8 +6,9 @@ import { ActionManager } from './services/actionManager';
 import { SessionData, ActionData, TerminalCommand } from './models/interfaces';
 import { TerminalMonitor } from './services/TerminalMonitor';
 import { SessionTreeProvider, SessionItem } from './services/Session';
-
-
+import { exec } from 'child_process';
+import * as os from 'os';
+import { beginWorkflow } from './services/dataIngestionService';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('Congratulations, your extension "caveatbot" is now active!');
@@ -120,19 +121,6 @@ export function activate(context: vscode.ExtensionContext) {
             await sessionTreeProvider.deleteAction(actionInfo.sessionId, actionInfo.actionIndex);
         }
     });
-    
-    // Register voice memo recording command
-    const recordVoiceMemoDisposable = vscode.commands.registerCommand('caveatbot.recordVoiceMemo', async () => {
-        await sessionTreeProvider.recordVoiceMemo();
-    });
-
-    // Register voice memo commands
-    context.subscriptions.push(
-        vscode.commands.registerCommand('caveatbot.startVoiceMemo', () => {
-            sessionTreeProvider.recordVoiceMemo();
-        })
-    );
-
     // Create a status bar item
     const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBarItem.command = 'caveatbot.startRecording';
@@ -175,8 +163,7 @@ export function activate(context: vscode.ExtensionContext) {
         startCaptureDisposable,
         stopCaptureDisposable,
         manualRecordCommandDisposable,
-        addNoteDisposable,  // Fix: removed undefined addConsequenceDisposable
-        recordVoiceMemoDisposable,  // Add the new voice memo recording command
+        addNoteDisposable,
         setActiveSessionDisposable,
         closeSessionDisposable,
         captureTerminalOutputDisposable,
@@ -190,7 +177,7 @@ export function activate(context: vscode.ExtensionContext) {
             dispose: () => {
                 terminalMonitor.dispose();
             }
-        }
+        },
     );
 
     // This ensures the recording status is correctly initialized on startup
@@ -208,6 +195,13 @@ export function activate(context: vscode.ExtensionContext) {
     
     // Initialize terminal tracking context (ensure it's set to false by default)
     vscode.commands.executeCommand('setContext', 'caveatbot.terminalTracking', false);
+
+    // Register command for data ingestion
+    const ingestDataDisposable = vscode.commands.registerCommand('caveatbot.ingestData', async () => {
+        beginWorkflow();
+    });
+
+    context.subscriptions.push(ingestDataDisposable);
 }
 
 // This method is called when your extension is deactivated

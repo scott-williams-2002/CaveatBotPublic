@@ -28,7 +28,7 @@
     "onTerminal",
     "onCommand:caveatbot.deleteSession",
     "onCommand:caveatbot.deleteAction",
-    "onCommand:caveatbot.recordVoiceMemo"
+    "onCommand:caveatbot.ingestData"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -94,21 +94,17 @@
         "icon": "$(trash)"
       },
       {
-        "command": "caveatbot.recordVoiceMemo",
-        "title": "Record Voice Memo",
-        "icon": "$(unmute)"
+        "command": "caveatbot.updateTerminalStatusBar",
+        "title": "CaveatBot: Update Terminal Status Bar"
       },
       {
-        "command": "caveatbot.stopVoiceMemo",
-        "title": "Stop Voice Memo Recording"
+        "command": "caveatbot.checkSessionStatus",
+        "title": "CaveatBot: Check Session Status"
       },
       {
-        "command": "caveatbot.startVoiceMemo",
-        "title": "CaveatBot: Start Voice Memo Recording"
-      },
-      {
-        "command": "caveatbot.stopVoiceMemo",
-        "title": "CaveatBot: Stop Voice Memo Recording"
+        "command": "caveatbot.ingestData",
+        "title": "CaveatBot: Ingest Data",
+        "icon": "$(cloud-upload)"
       }
     ],
     "viewsContainers": {
@@ -176,6 +172,11 @@
           "command": "caveatbot.deleteAction",
           "when": "view == caveatbotSessionExplorer && viewItem =~ /command|consequence|note/",
           "group": "inline@1"
+        },
+        {
+          "command": "caveatbot.ingestData",
+          "when": "view == caveatbotSessionExplorer && viewItem == session",
+          "group": "inline@3"
         }
       ],
       "terminal/title": [
@@ -184,39 +185,8 @@
           "group": "navigation",
           "when": "caveatbot.terminalTracking"
         }
-      ],
-      "commandPalette": [
-        {
-          "command": "caveatbot.startVoiceMemo",
-          "when": "caveatbot.isRecording"
-        },
-        {
-          "command": "caveatbot.stopVoiceMemo",
-          "when": "caveatbot.isRecording"
-        }
-      ],
-      "editor/context": [
-        {
-          "command": "caveatbot.startVoiceMemo",
-          "when": "caveatbot.isRecording",
-          "group": "caveatbot"
-        }
       ]
-    },
-    "keybindings": [
-      {
-        "command": "caveatbot.startVoiceMemo",
-        "key": "ctrl+shift+v",
-        "mac": "cmd+shift+v",
-        "when": "editorFocus || viewFocus"
-      },
-      {
-        "command": "caveatbot.stopVoiceMemo",
-        "key": "ctrl+shift+x",
-        "mac": "cmd+shift+x",
-        "when": "editorFocus || viewFocus"
-      }
-    ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -227,9 +197,9 @@
     "test": "node ./out/test/runTest.js"
   },
   "dependencies": {
+    "@langchain/groq": "^0.2.0",
     "diff": "^5.2.0",
-    "dotenv": "^16.4.7",
-    "groq-sdk": "^0.17.0"
+    "dotenv": "^16.4.7"
   },
   "devDependencies": {
     "@types/diff": "^5.0.3",
