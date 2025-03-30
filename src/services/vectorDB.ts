@@ -3,9 +3,17 @@ import { Pinecone } from '@pinecone-database/pinecone';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { OpenAIEmbeddings } from "@langchain/openai";
+import { ChatGroq } from '@langchain/groq';
 
 // Load environment variables from a .env file in a custom directory
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+// Define available indices as constants
+export const AVAILABLE_INDICES = {
+  SCREENSHOTS: 'screenshots',
+  COMMANDS: 'commands',
+  KEY_CONCEPTS: 'key-concepts'
+};
 
 // Initialize Pinecone client
 const pc = new Pinecone({
@@ -257,5 +265,195 @@ export async function searchVectorDB(query: string, indexName: string, limit: nu
     vscode.window.showErrorMessage(`Search failed: ${error.message}`);
     console.error('Search error:', error);
     return [];
+  }
+}
+
+// Search Screenshots index
+export async function searchScreenshotsIndex(keywords: string[], limit: number = 3): Promise<any[]> {
+  try {
+    // Join keywords for better semantic search
+    const query = keywords.join(' ');
+    const results = await searchVectorDB(query, 'screenshots', limit);
+    
+    // Format results for easy consumption
+    return results.map(match => ({
+      type: 'screenshot',
+      score: match.score,
+      path: match.metadata?.path || 'Unknown path',
+      summary: match.metadata?.summary || 'No summary available',
+      keyElements: match.metadata?.keyElements?.split(', ') || [],
+      session: match.metadata?.session || 'Unknown session'
+    }));
+  } catch (error) {
+    console.error('Error searching screenshots index:', error);
+    return [];
+  }
+}
+
+// Search Commands index
+export async function searchCommandsIndex(keywords: string[], limit: number = 3): Promise<any[]> {
+  try {
+    // Join keywords for better semantic search
+    const query = keywords.join(' ');
+    const results = await searchVectorDB(query, 'commands', limit);
+    
+    // Format results for easy consumption
+    return results.map(match => ({
+      type: 'command',
+      score: match.score,
+      command: match.metadata?.command || 'Unknown command',
+      frequency: match.metadata?.frequency || 0,
+      examples: match.metadata?.examples?.split(' | ') || [],
+      associatedCode: match.metadata?.associatedCode || [],
+      directories: match.metadata?.directories || []
+    }));
+  } catch (error) {
+    console.error('Error searching commands index:', error);
+    return [];
+  }
+}
+
+// Search Key Concepts index
+export async function searchKeyConceptsIndex(keywords: string[], limit: number = 3): Promise<any[]> {
+  try {
+    // Join keywords for better semantic search
+    const query = keywords.join(' ');
+    const results = await searchVectorDB(query, 'key-concepts', limit);
+    
+    // Format results for easy consumption
+    return results.map(match => ({
+      type: 'concept',
+      score: match.score,
+      concept: match.metadata?.concept || 'Unknown concept',
+      relatedSession: match.metadata?.relatedSession || 'Unknown session',
+      workflowPatterns: match.metadata?.workflowPatterns?.split(', ') || []
+    }));
+  } catch (error) {
+    console.error('Error searching key concepts index:', error);
+    return [];
+  }
+}
+
+// Function to classify if a query is technical (code-related) or non-technical
+export async function classifyQueryType(message: string): Promise<{ type: 'technical' | 'non-technical', confidence: number }> {
+  try {
+    const llm = new ChatGroq({
+      model: "llama-3.1-8b-instant",
+      temperature: 0.1,
+      maxTokens: 100,
+    });
+    
+    const prompt = [
+      {
+        role: "system",
+        content: "You are an advanced query classifier designed to identify technical queries. Analyze the input query and determine whether it is 'technical' (related to code, programming, software development, or technical tools) or 'non-technical'. Provide your response as a JSON object with two fields: 'type' (either 'technical' or 'non-technical') and 'confidence' (a numeric value between 0 and 1 indicating your certainty in the classification). Ensure accuracy and clarity in your classification."
+      },
+      { role: "user", content: `Classify this query: ${message}` },
+    ];
+    
+    const aiMsg = await llm.invoke(prompt, {
+      response_format: { type: "json_object" }
+    });
+    
+    try {
+      const responseJson = JSON.parse(aiMsg.content.toString());
+      
+      if (responseJson && responseJson.type && typeof responseJson.confidence === 'number') {
+        return {
+          type: responseJson.type === 'technical' ? 'technical' : 'non-technical',
+          confidence: Math.max(0, Math.min(1, responseJson.confidence)) // Ensure confidence is between 0 and 1
+        };
+      }
+      
+      // Default fallback if response format is incorrect
+      return {
+        type: message.match(/\b(code|function|api|error|bug|class|variable|method|compiler|programming|developer|syntax|library|framework|package|module|typescript|javascript|python|java|c\+\+|html|css)\b/i) 
+          ? 'technical' 
+          : 'non-technical',
+        confidence: 0.7 // Medium confidence for fallback heuristic
+      };
+      
+    } catch (error) {
+      console.error('Failed to parse query classification response:', error);
+      // Fallback to keyword-based classification
+      const technicalTerms = [
+        'code', 'function', 'api', 'error', 'bug', 'class', 'variable', 
+        'method', 'compiler', 'programming', 'developer', 'syntax', 'library',
+        'framework', 'package', 'module', 'typescript', 'javascript', 'python',
+        'java', 'c++', 'html', 'css', 'command', 'terminal', 'git', 'build'
+      ];
+      
+      const technicalWordCount = technicalTerms.filter(term => 
+        message.toLowerCase().includes(term.toLowerCase())
+      ).length;
+      
+      return {
+        type: technicalWordCount > 0 ? 'technical' : 'non-technical',
+        confidence: Math.min(0.5 + (technicalWordCount * 0.1), 0.9) // Scale confidence based on matches
+      };
+    }
+  } catch (error) {
+    console.error('Error classifying query:', error);
+    // Default fallback in case of error
+    return { 
+      type: 'technical', // Default to technical to err on the side of caution
+      confidence: 0.5 
+    };
+  }
+}
+
+// Helper function to extract keywords from a chat message
+export async function extractKeywordsFromMessage(message: string): Promise<string[]> {
+  try {
+    const llm = new ChatGroq({
+      model: "llama-3.1-8b-instant", // Using smaller model for keyword extraction
+      temperature: 0.1,
+      maxTokens: 250,
+    });
+    
+    const prompt = [
+      {
+        role: "system",
+        content: "You are a technical assistant specializing in software development and programming concepts. Extract 3-7 precise and relevant technical keywords or phrases from the input. The keywords should be actionable, specific, and useful for searching in a vector database of code and command-related knowledge. Return your response as a JSON array of strings."
+
+      },
+      { role: "user", content: `Extract search keywords from this query: ${message}` },
+    ];
+    
+    const aiMsg = await llm.invoke(prompt, {
+      response_format: { type: "json_object" }
+    });
+    
+    try {
+      const responseJson = JSON.parse(aiMsg.content.toString());
+      
+      // Handle different possible formats the model might return
+      if (Array.isArray(responseJson)) {
+        return responseJson;
+      } else if (responseJson.keywords && Array.isArray(responseJson.keywords)) {
+        return responseJson.keywords;
+      } else if (typeof responseJson === 'object') {
+        // Find any array property in the object
+        const arrayProp = Object.values(responseJson).find(val => Array.isArray(val));
+        if (arrayProp && Array.isArray(arrayProp)) {
+          return arrayProp;
+        }
+      }
+      
+      // Fallback to using the message itself as a keyword
+      return [message];
+      
+    } catch (error) {
+      console.error('Failed to parse keywords response:', error);
+      // Fallback to using the message itself split by spaces
+      const fallbackKeywords = message.split(' ')
+        .filter(word => word.length > 3)  // Only words longer than 3 chars
+        .slice(0, 5);                     // Take at most 5 words
+      
+      return fallbackKeywords.length ? fallbackKeywords : [message];
+    }
+  } catch (error) {
+    console.error('Error extracting keywords:', error);
+    return [message]; // Fallback to the original message
   }
 }

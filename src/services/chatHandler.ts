@@ -1,6 +1,13 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import {
+  classifyQueryType, 
+  extractKeywordsFromMessage, 
+  searchScreenshotsIndex,
+  searchCommandsIndex,
+  searchKeyConceptsIndex
+} from './vectorDB';
 
 // Chat handler class
 export class ChatHandler {
@@ -256,6 +263,15 @@ export class ChatHandler {
                             chatContainer.scrollTop = chatContainer.scrollHeight;
                         }
                         
+                        // Function to update the typing indicator with a new status
+                        function updateTypingStatus(status) {
+                            const typingIndicator = document.querySelector('.typing-indicator .bot-message');
+                            if (typingIndicator) {
+                                typingIndicator.textContent = status;
+                                chatContainer.scrollTop = chatContainer.scrollHeight;
+                            }
+                        }
+                        
                         // Function to send a message
                         function sendMessage() {
                             const text = messageInput.value.trim();
@@ -270,7 +286,7 @@ export class ChatHandler {
                             // Add typing indicator
                             const typingDiv = document.createElement('div');
                             typingDiv.className = 'message-container bot-message-container typing-indicator';
-                            typingDiv.innerHTML = '<div class="message bot-message">CaveatBot is thinking...</div>';
+                            typingDiv.innerHTML = '<div class="message bot-message">Processing your request...</div>';
                             chatContainer.appendChild(typingDiv);
                             chatContainer.scrollTop = chatContainer.scrollHeight;
                             
@@ -306,6 +322,10 @@ export class ChatHandler {
                                     // Add bot response
                                     addMessage(message.text);
                                     break;
+                                case 'status':
+                                    // Update typing indicator with status
+                                    updateTypingStatus(message.text);
+                                    break;
                             }
                         });
                         
@@ -322,11 +342,66 @@ export class ChatHandler {
         // Log the message to the console
         console.log(`User message: ${userMessage}`);
         
-        // Very simple response - just echo back what the user said with a timestamp
-        const response = `I received your message: "${userMessage}"
+        // Send status updates as processing happens
+        panel.webview.postMessage({
+            type: 'status',
+            text: 'Analyzing your query...'
+        });
         
-Timestamp: ${new Date().toLocaleTimeString()}`;
+        const queryType = await classifyQueryType(userMessage);
+        console.log(`Query Type: ${queryType}`);
         
+        panel.webview.postMessage({
+            type: 'status',
+            text: 'Query classified as ' + queryType.type + '. Processing...'
+        });
+        
+        let response: string;
+
+        if (queryType.type === 'technical') {
+            panel.webview.postMessage({
+                type: 'status',
+                text: 'Extracting keywords from technical query...'
+            });
+            
+            const keywords = await extractKeywordsFromMessage(userMessage);
+            console.log('Extracted keywords:', keywords);
+            
+            panel.webview.postMessage({
+                type: 'status',
+                text: `Found ${keywords.length} keywords. Searching vector database...`
+            });
+            
+            // Search all indexes in parallel for better performance
+            panel.webview.postMessage({
+                type: 'status',
+                text: 'Searching screenshots index...'
+            });
+            const screenshotsResults = await searchScreenshotsIndex(keywords);
+            
+            panel.webview.postMessage({
+                type: 'status',
+                text: 'Searching commands index...'
+            });
+            const commandsResults = await searchCommandsIndex(keywords);
+            
+            panel.webview.postMessage({
+                type: 'status',
+                text: 'Searching key concepts index...'
+            });
+            const conceptsResults = await searchKeyConceptsIndex(keywords);
+            
+            panel.webview.postMessage({
+                type: 'status',
+                text: 'Formatting results...'
+            });
+            
+            // Format the response with the search results
+            response = this.formatSearchResults(keywords, screenshotsResults, commandsResults, conceptsResults);
+        } else {
+            response = "This appears to be a non-technical query. I'm designed to help with technical questions related to your recorded coding sessions. Please try asking about code, commands, or technical concepts.";
+        }
+
         // Send the response back to the webview
         if (panel) {
             panel.webview.postMessage({
@@ -334,6 +409,60 @@ Timestamp: ${new Date().toLocaleTimeString()}`;
                 text: response
             });
         }
+    }
+
+    // Helper method to format search results in a readable way
+    private formatSearchResults(keywords: string[], screenshots: any[], commands: any[], concepts: any[]): string {
+        const hasResults = screenshots.length > 0 || commands.length > 0 || concepts.length > 0;
+        
+        if (!hasResults) {
+            return `I couldn't find any information related to your query with keywords: ${keywords.join(', ')}. Could you please try rephrasing your question or using different terms?`;
+        }
+        
+        let response = `Here's what I found related to: ${keywords.join(', ')}\n\n`;
+        
+        // Add screenshots results
+        if (screenshots.length > 0) {
+            response += `📸 **Screenshots (${screenshots.length}):**\n\n`;
+            screenshots.forEach((result, index) => {
+                response += `${index + 1}. **Session**: ${result.session}\n`;
+                response += `   **Summary**: ${result.summary}\n`;
+                if (result.keyElements?.length > 0) {
+                    response += `   **Key Elements**: ${result.keyElements.join(', ')}\n`;
+                }
+                response += `   **Path**: ${result.path}\n\n`;
+            });
+        }
+        
+        // Add commands results
+        if (commands.length > 0) {
+            response += `⌨️ **Commands (${commands.length}):**\n\n`;
+            commands.forEach((result, index) => {
+                response += `${index + 1}. \`${result.command}\` (used ${result.frequency} times)\n`;
+                if (result.examples?.length > 0) {
+                    response += `   **Example**: ${result.examples[0]}\n`;
+                }
+                if (result.directories?.length > 0) {
+                    response += `   **Common Directories**: ${result.directories.slice(0, 3).join(', ')}\n`;
+                }
+                response += '\n';
+            });
+        }
+        
+        // Add concepts results
+        if (concepts.length > 0) {
+            response += `💡 **Key Concepts (${concepts.length}):**\n\n`;
+            concepts.forEach((result, index) => {
+                response += `${index + 1}. **${result.concept}**\n`;
+                response += `   **Session**: ${result.relatedSession}\n`;
+                if (result.workflowPatterns?.length > 0) {
+                    response += `   **Related Workflows**: ${result.workflowPatterns.slice(0, 3).join(', ')}\n`;
+                }
+                response += '\n';
+            });
+        }
+        
+        return response;
     }
 
     // For cleanup
