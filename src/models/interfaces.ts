@@ -9,12 +9,17 @@ export interface SessionData {
 }
 
 export interface ActionData {
-    type: 'command' | 'consequence' | 'note' | 'codeChange';
+    type: 'terminal' | 'screenshot'| 'command'| 'consequence' | 'note' | 'codeChange'; // Add 'screenshot' to the types
     command: string;
     code_change: string;
     output: string;
     timestamp: string;
     success?: boolean;
+    
+    // Properties specific to screenshot actions
+    path?: string;
+    filename?: string;
+    description?: string;
 }
 
 // Terminal data structure

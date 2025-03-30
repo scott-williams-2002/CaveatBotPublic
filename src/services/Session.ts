@@ -252,6 +252,65 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
         }
     }
     
+    /**
+     * Adds a screenshot as an action to the current session
+     * @param screenshotPath Path to the screenshot file
+     */
+    public async addScreenshotAction(screenshotPath: string): Promise<void> {
+        if (!this.isActiveSession()) {
+            vscode.window.showWarningMessage('No active session to add screenshot to');
+            return;
+        }
+        
+        try {
+            // Ask user if they want to add the screenshot to the session
+            const result = await vscode.window.showInformationMessage(
+                `New screenshot detected: ${path.basename(screenshotPath)}`, 
+                'Add to Session', 
+                'Ignore'
+            );
+            
+            // Only proceed if user clicked "Add to Session"
+            if (result !== 'Add to Session') {
+                return;
+            }
+            
+            // Get the current session
+            const session = this.sessions.get(this.currentSession!);
+            if (!session) {
+                vscode.window.showErrorMessage('Session not found');
+                return;
+            }
+            
+            // Create a screenshot action
+            const screenshotAction: ActionData = {
+                type: 'screenshot',
+                timestamp: new Date().toISOString(),
+                path: screenshotPath,
+                filename: path.basename(screenshotPath),
+                description: `Screenshot captured: ${path.basename(screenshotPath)}`,
+                command:"",
+                code_change:"",
+                output:""
+            };
+            
+            // Add action to session
+            session.actions.push(screenshotAction);
+            
+            // Save updated session
+            this.saveSession(this.currentSession!);
+            
+            // Refresh view
+            this.refresh();
+            
+            vscode.window.showInformationMessage(`Screenshot added to session "${session.name}"`);
+            
+        } catch (error) {
+            console.error('Error adding screenshot action:', error);
+            vscode.window.showErrorMessage(`Failed to add screenshot: ${error}`);
+        }
+    }
+    
     // Save session to its own file
     private saveSession(sessionId: string): void {
         const session = this.sessions.get(sessionId);

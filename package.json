@@ -186,6 +186,16 @@
           "when": "caveatbot.terminalTracking"
         }
       ]
+    },
+    "configuration": {
+      "title": "CaveatBot",
+      "properties": {
+        "caveatbot.screenshotDirectory": {
+          "type": "string",
+          "default": null,
+          "description": "The directory to monitor for screenshots"
+        }
+      }
     }
   },
   "scripts": {

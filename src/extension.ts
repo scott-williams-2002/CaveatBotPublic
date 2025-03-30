@@ -35,6 +35,9 @@ export function activate(context: vscode.ExtensionContext) {
         await sessionTreeProvider.startSession();
         vscode.commands.executeCommand('setContext', 'caveatbot.isRecording', true);
         statusBarItem.text = '$(pulse) CaveatBot Recording';
+        
+        // Start monitoring screenshots when recording begins
+        setupScreenshotMonitoring(context, sessionTreeProvider);
     });
     
     // Register terminal output capture command
@@ -202,6 +205,121 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(ingestDataDisposable);
+    
+    // Set up screenshot monitoring by default
+    setupScreenshotMonitoring(context, sessionTreeProvider);
+
+    // Register command for changing screenshot directory
+    const changeScreenshotDirDisposable = vscode.commands.registerCommand('caveatbot.changeScreenshotDirectory', async () => {
+        const newDir = await selectScreenshotDirectory();
+        if (newDir) {
+            const config = vscode.workspace.getConfiguration('caveatbot');
+            await config.update('screenshotDirectory', newDir, vscode.ConfigurationTarget.Global);
+            
+            // Restart the screenshot monitoring with the new directory
+            setupScreenshotMonitoring(context, sessionTreeProvider);
+            vscode.window.showInformationMessage(`Screenshot directory changed to: ${newDir}`);
+        }
+    });
+    
+    context.subscriptions.push(changeScreenshotDirDisposable);
+}
+
+/**
+ * Gets the saved screenshot directory or prompts the user to select one
+ * @param context The extension context
+ * @returns The path to the screenshots directory
+ */
+async function getScreenshotDirectory(context: vscode.ExtensionContext): Promise<string | undefined> {
+    // Check if we have a saved directory
+    const config = vscode.workspace.getConfiguration('caveatbot');
+    let screenshotDir = config.get<string>('screenshotDirectory');
+    
+    // If no directory is configured, prompt the user to select one
+    if (!screenshotDir) {
+        screenshotDir = await selectScreenshotDirectory();
+        
+        // Save the selected directory if one was chosen
+        if (screenshotDir) {
+            await config.update('screenshotDirectory', screenshotDir, vscode.ConfigurationTarget.Global);
+        }
+    }
+    
+    return screenshotDir;
+}
+
+/**
+ * Prompts the user to select a screenshot directory
+ * @returns The selected directory path or undefined if canceled
+ */
+async function selectScreenshotDirectory(): Promise<string | undefined> {
+    const options: vscode.OpenDialogOptions = {
+        canSelectFiles: false,
+        canSelectFolders: true,
+        canSelectMany: false,
+        openLabel: 'Select Screenshots Directory'
+    };
+    
+    const result = await vscode.window.showOpenDialog(options);
+    
+    if (result && result.length > 0) {
+        return result[0].fsPath;
+    }
+    
+    return undefined;
+}
+
+/**
+ * Sets up monitoring for screenshot directory changes
+ * @param context The extension context
+ * @param sessionTreeProvider The session tree provider to record screenshot actions
+ */
+async function setupScreenshotMonitoring(context: vscode.ExtensionContext, sessionTreeProvider: SessionTreeProvider) {
+    // Get or prompt for screenshot directory
+    const screenshotDir = await getScreenshotDirectory(context);
+    
+    if (!screenshotDir) {
+        vscode.window.showWarningMessage('Screenshot monitoring disabled. No directory selected.');
+        return;
+    }
+    
+    // Create a pattern for watching the selected directory
+    const screenshotPattern = new vscode.RelativePattern(screenshotDir, '*');
+    
+    // Create a FileSystemWatcher for the specified directory
+    const watcher = vscode.workspace.createFileSystemWatcher(screenshotPattern);
+    
+    // Listen for file creation events
+    watcher.onDidCreate(async (uri) => {
+        console.log(`Screenshot created: ${uri.fsPath}`);
+        
+        // Only add screenshot to session if we're recording and it's an image file
+        if (sessionTreeProvider.isActiveSession() && isImageFile(uri.fsPath)) {
+            // Add screenshot as an action to current session
+            await sessionTreeProvider.addScreenshotAction(uri.fsPath);
+            vscode.window.showInformationMessage(`Screenshot captured: ${path.basename(uri.fsPath)}`);
+        }
+    });
+
+    // Dispose of the watcher when it is no longer needed
+    context.subscriptions.push(watcher);
+    context.subscriptions.push({
+        dispose: () => {
+            watcher.dispose();
+        }
+    });
+    
+    vscode.window.showInformationMessage(`Monitoring for screenshots in: ${screenshotDir}`);
+}
+
+/**
+ * Checks if a file is an image based on its extension
+ * @param filePath The path to the file
+ */
+function isImageFile(filePath: string): boolean {
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'];
+    const ext = path.extname(filePath).toLowerCase();
+    return imageExtensions.includes(ext);
 }
 
 // This method is called when your extension is deactivated
