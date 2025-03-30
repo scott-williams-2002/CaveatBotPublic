@@ -27,7 +27,8 @@
     "onCommand:caveatbot.viewSessionJson",
     "onTerminal",
     "onCommand:caveatbot.deleteSession",
-    "onCommand:caveatbot.deleteAction"
+    "onCommand:caveatbot.deleteAction",
+    "onCommand:caveatbot.recordVoiceMemo"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -91,6 +92,23 @@
         "command": "caveatbot.deleteAction",
         "title": "Delete Item",
         "icon": "$(trash)"
+      },
+      {
+        "command": "caveatbot.recordVoiceMemo",
+        "title": "Record Voice Memo",
+        "icon": "$(unmute)"
+      },
+      {
+        "command": "caveatbot.stopVoiceMemo",
+        "title": "Stop Voice Memo Recording"
+      },
+      {
+        "command": "caveatbot.startVoiceMemo",
+        "title": "CaveatBot: Start Voice Memo Recording"
+      },
+      {
+        "command": "caveatbot.stopVoiceMemo",
+        "title": "CaveatBot: Stop Voice Memo Recording"
       }
     ],
     "viewsContainers": {
@@ -166,8 +184,39 @@
           "group": "navigation",
           "when": "caveatbot.terminalTracking"
         }
+      ],
+      "commandPalette": [
+        {
+          "command": "caveatbot.startVoiceMemo",
+          "when": "caveatbot.isRecording"
+        },
+        {
+          "command": "caveatbot.stopVoiceMemo",
+          "when": "caveatbot.isRecording"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "caveatbot.startVoiceMemo",
+          "when": "caveatbot.isRecording",
+          "group": "caveatbot"
+        }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "caveatbot.startVoiceMemo",
+        "key": "ctrl+shift+v",
+        "mac": "cmd+shift+v",
+        "when": "editorFocus || viewFocus"
+      },
+      {
+        "command": "caveatbot.stopVoiceMemo",
+        "key": "ctrl+shift+x",
+        "mac": "cmd+shift+x",
+        "when": "editorFocus || viewFocus"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -178,7 +227,9 @@
     "test": "node ./out/test/runTest.js"
   },
   "dependencies": {
-    "diff": "^5.2.0"
+    "diff": "^5.2.0",
+    "dotenv": "^16.4.7",
+    "groq-sdk": "^0.17.0"
   },
   "devDependencies": {
     "@types/diff": "^5.0.3",

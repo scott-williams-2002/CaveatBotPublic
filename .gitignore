@@ -3,3 +3,9 @@ dist
 node_modules
 .vscode-test/
 *.vsix
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.production

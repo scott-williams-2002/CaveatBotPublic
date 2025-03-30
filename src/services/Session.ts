@@ -6,6 +6,7 @@ import { SessionData, ActionData, TerminalCommand } from '../models/interfaces';
 import { TerminalMonitor } from './TerminalMonitor';
 import { FileWatcherService } from './fileWatcherService';
 import { ActionManager } from './actionManager';
+import { AudioHandler } from './AudioHandler';
 
 // Session Tree Provider class
 export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem> {
@@ -20,10 +21,14 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
     private terminalMonitor: TerminalMonitor | null = null;
     private fileWatcherService: FileWatcherService | null = null;
     private actionManager: ActionManager;
+    private audioHandler: AudioHandler;
     
     constructor(private context: vscode.ExtensionContext) {
         this.sessionsStoragePath = path.join(context.globalStorageUri.fsPath, 'recording-sessions');
         this.actionManager = new ActionManager();
+        this.audioHandler = new AudioHandler();
+        // Initialize AudioHandler with extension context
+        this.audioHandler.initialize(context);
         
         // Ensure the sessions directory exists
         if (!fs.existsSync(this.sessionsStoragePath)) {
@@ -249,6 +254,84 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
             } else {
                 await this.addAction('note', noteText);
             }
+        }
+    }
+    
+    // Record a voice memo and add it to the current session
+    public async recordVoiceMemo(): Promise<void> {
+        if (!this.currentSession) {
+            const startNew = await vscode.window.showInformationMessage(
+                'No active recording session. Start a new one?',
+                'Yes',
+                'No'
+            );
+            
+            if (startNew === 'Yes') {
+                await this.startSession();
+                if (!this.currentSession) {
+                    return; // User cancelled session creation
+                }
+            } else {
+                return;
+            }
+        }
+        
+        // Check if recording is already in progress
+        if (this.audioHandler.isRecordingActive()) {
+            // If recording is in progress, stop it
+            vscode.window.showInformationMessage('Stopping current voice memo recording...');
+            const result = await this.audioHandler.stopRecording();
+            
+            if (result.success && result.transcript) {
+                const noteText = `Voice memo recorded: "${result.transcript}"`;
+                await this.addAction('note', noteText, true, undefined, noteText);
+                vscode.window.showInformationMessage('Voice memo recorded successfully');
+            }
+            return;
+        }
+        
+        // Start recording
+        vscode.window.showInformationMessage('Starting voice memo recording...', 'Stop Recording')
+            .then(selection => {
+                if (selection === 'Stop Recording' && this.audioHandler.isRecordingActive()) {
+                    this.audioHandler.stopRecording();
+                }
+            });
+        
+        try {
+            // Start recording and get the result when complete
+            const recordingResult = await this.audioHandler.startRecording(this.currentSession);
+            
+            if (recordingResult.success) {
+                // Add a note action about the voice memo with transcript if available
+                let noteText = 'Voice memo recorded';
+                if (recordingResult.transcript) {
+                    noteText += `: "${recordingResult.transcript}"`;
+                }
+                
+                await this.addAction('note', noteText, true, undefined, noteText);
+                vscode.window.showInformationMessage('Voice memo recorded successfully');
+            } else if (recordingResult.error) {
+                // Don't show error again if it was already handled in AudioHandler
+                if (!recordingResult.error.includes('tools not found')) {
+                    vscode.window.showErrorMessage(`Failed to record voice memo: ${recordingResult.error}`);
+                }
+                
+                // If installation of tools is required, offer a text-based note instead
+                if (recordingResult.error.includes('tools not found')) {
+                    const useTextNote = await vscode.window.showInformationMessage(
+                        'Would you like to add a text note instead?',
+                        'Yes',
+                        'No'
+                    );
+                    
+                    if (useTextNote === 'Yes') {
+                        await this.addNoteAction();
+                    }
+                }
+            }
+        } catch (error) {
+            vscode.window.showErrorMessage(`Error during voice recording: ${error}`);
         }
     }
     

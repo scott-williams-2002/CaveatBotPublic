@@ -121,6 +121,18 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
     
+    // Register voice memo recording command
+    const recordVoiceMemoDisposable = vscode.commands.registerCommand('caveatbot.recordVoiceMemo', async () => {
+        await sessionTreeProvider.recordVoiceMemo();
+    });
+
+    // Register voice memo commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand('caveatbot.startVoiceMemo', () => {
+            sessionTreeProvider.recordVoiceMemo();
+        })
+    );
+
     // Create a status bar item
     const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     statusBarItem.command = 'caveatbot.startRecording';
@@ -164,6 +176,7 @@ export function activate(context: vscode.ExtensionContext) {
         stopCaptureDisposable,
         manualRecordCommandDisposable,
         addNoteDisposable,  // Fix: removed undefined addConsequenceDisposable
+        recordVoiceMemoDisposable,  // Add the new voice memo recording command
         setActiveSessionDisposable,
         closeSessionDisposable,
         captureTerminalOutputDisposable,
