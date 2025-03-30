@@ -71,7 +71,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
                         );
                         item.description = new Date(action.timestamp).toLocaleTimeString();
                         item.iconPath = this.getIconForAction(action);
-                        item.contextValue = action.type;
+                        // Set a consistent context value with both 'action' and the action type
+                        item.contextValue = `action-${action.type}`;
                         return item;
                     })
                 );
@@ -703,9 +704,8 @@ export class SessionItem extends vscode.TreeItem {
         
         // Set context value for command/session items to enable right-click menus
         if (this.id.includes('-action-')) {
-            // This is an action item
-            this.contextValue = this.id.includes('-action-') ? 
-                this.id.split('-action-')[1].split('-')[0] : 'action';
+            // This is an action item - don't set contextValue here, it will be set in getChildren
+            // The contextValue will be set in getChildren to ensure consistency
         } else if (this.id.startsWith('session-')) {
             // This is a session item
             this.contextValue = 'session';

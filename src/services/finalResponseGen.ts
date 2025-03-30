@@ -111,7 +111,7 @@ export async function generatePolishedResponse(
     - DO NOT include raw JSON in the response; transform the data into a user-friendly format.
     `
     ],
-    ["human", `User query: ${userQuery} Search results: ${structuredData}. Make it look polished and like any other technical tutorial. No hashtags or asterics. No weird spacing. Code blocks and command blocks are needed. Don't add any useless and excessive workflow pattern diagrams with arrows in output. `],
+    ["human", `User query: ${userQuery} Search results: ${structuredData}. Make it look polished and like any other technical tutorial. No hashtags or asterics. No weird spacing. Code blocks and command blocks are needed. Don't add any useless and excessive workflow pattern diagrams with arrows in output. If there are screenshot results, add only their descriptions along with screenshot number if theres more than one. Do not print their path`],
   ]);
 
   // Create the chain (prompt + LLM + output parser)

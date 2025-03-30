@@ -161,7 +161,7 @@
         {
           "command": "caveatbot.openChat",
           "when": "view == caveatbotSessionExplorer",
-          "group": "recording@6"
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
@@ -182,7 +182,7 @@
         },
         {
           "command": "caveatbot.deleteAction",
-          "when": "view == caveatbotSessionExplorer && viewItem =~ /command|consequence|note/",
+          "when": "view == caveatbotSessionExplorer && viewItem =~ /command|consequence|note|terminal|screenshot|codeChange/",
           "group": "inline@1"
         },
         {
