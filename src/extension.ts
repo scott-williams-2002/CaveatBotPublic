@@ -201,7 +201,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Register command for data ingestion
     const ingestDataDisposable = vscode.commands.registerCommand('caveatbot.ingestData', async () => {
-        beginWorkflow();
+        sessionTreeProvider.initiateDataIngest();
     });
 
     context.subscriptions.push(ingestDataDisposable);
@@ -283,21 +283,26 @@ async function setupScreenshotMonitoring(context: vscode.ExtensionContext, sessi
         return;
     }
     
+    // Normalize the screenshot directory path
+    const normalizedScreenshotDir = path.normalize(screenshotDir);
+    
     // Create a pattern for watching the selected directory
-    const screenshotPattern = new vscode.RelativePattern(screenshotDir, '*');
+    const screenshotPattern = new vscode.RelativePattern(normalizedScreenshotDir, '*');
     
     // Create a FileSystemWatcher for the specified directory
     const watcher = vscode.workspace.createFileSystemWatcher(screenshotPattern);
     
     // Listen for file creation events
     watcher.onDidCreate(async (uri) => {
-        console.log(`Screenshot created: ${uri.fsPath}`);
+        // Normalize the file path
+        const normalizedPath = path.normalize(uri.fsPath);
+        console.log(`Screenshot created: ${normalizedPath}`);
         
         // Only add screenshot to session if we're recording and it's an image file
-        if (sessionTreeProvider.isActiveSession() && isImageFile(uri.fsPath)) {
+        if (sessionTreeProvider.isActiveSession() && isImageFile(normalizedPath)) {
             // Add screenshot as an action to current session
-            await sessionTreeProvider.addScreenshotAction(uri.fsPath);
-            vscode.window.showInformationMessage(`Screenshot captured: ${path.basename(uri.fsPath)}`);
+            await sessionTreeProvider.addScreenshotAction(normalizedPath);
+            vscode.window.showInformationMessage(`Screenshot captured: ${path.basename(normalizedPath)}`);
         }
     });
 

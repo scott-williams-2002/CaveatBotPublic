@@ -6,7 +6,7 @@ import { SessionData, ActionData, TerminalCommand } from '../models/interfaces';
 import { TerminalMonitor } from './TerminalMonitor';
 import { FileWatcherService } from './fileWatcherService';
 import { ActionManager } from './actionManager';
-import {generateNameFromDescription} from './dataIngestionService';
+import {generateNameFromDescription, beginWorkflow} from './dataIngestionService';
 
 // Session Tree Provider class
 export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem> {
@@ -93,6 +93,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
                     : new vscode.ThemeIcon('error');
             case 'note':
                 return new vscode.ThemeIcon('pencil');
+            case 'screenshot':
+                return new vscode.ThemeIcon('device-camera');
             default:
                 return new vscode.ThemeIcon('circle-outline');
         }
@@ -282,16 +284,19 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
                 return;
             }
             
-            // Create a screenshot action
+            // Normalize the path to ensure consistent format
+            const normalizedPath = path.normalize(screenshotPath);
+            
+            // Create a screenshot action - make sure all path properties are set
             const screenshotAction: ActionData = {
                 type: 'screenshot',
                 timestamp: new Date().toISOString(),
-                path: screenshotPath,
-                filename: path.basename(screenshotPath),
-                description: `Screenshot captured: ${path.basename(screenshotPath)}`,
-                command:"",
-                code_change:"",
-                output:""
+                path: normalizedPath, // Add this for backwards compatibility
+                filename: path.basename(normalizedPath),
+                description: `Screenshot captured: ${path.basename(normalizedPath)}`,
+                command: "",
+                code_change: "",
+                output: ""
             };
             
             // Add action to session
@@ -415,6 +420,25 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
         };
     
         return JSON.stringify(jsonData, null, 2);
+    }
+    
+    // Get the complete session data for data ingestion
+    getFullSessionData(sessionId: string): SessionData | null {
+        const session = this.sessions.get(sessionId);
+        return session || null;
+    }
+
+    initiateDataIngest(): void {
+        const sessionId = this.getCurrentSession();
+        if (sessionId) {
+            const sessionData = this.getFullSessionData(sessionId);
+            if (sessionData) {
+                beginWorkflow(sessionData);
+            }
+        } else {
+            vscode.window.showErrorMessage('No active session to begin workflow with.');
+        }
+
     }
     
     // Set a session as the active session

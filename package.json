@@ -209,7 +209,8 @@
   "dependencies": {
     "@langchain/groq": "^0.2.0",
     "diff": "^5.2.0",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "groq-sdk": "^0.17.0"
   },
   "devDependencies": {
     "@types/diff": "^5.0.3",
