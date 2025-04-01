@@ -9,9 +9,13 @@ import { ActionManager } from './actionManager';
 import {generateNameFromDescription, beginWorkflow} from './dataIngestionService';
 
 // Session Tree Provider class
-export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem> {
+export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>, vscode.TreeDragAndDropController<SessionItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<SessionItem | undefined | null> = new vscode.EventEmitter<SessionItem | undefined | null>();
     readonly onDidChangeTreeData: vscode.Event<SessionItem | undefined | null> = this._onDidChangeTreeData.event;
+    
+    // Add new dropMimeTypes property for drag and drop
+    dropMimeTypes = ['application/vnd.code.tree.caveatbot'];
+    dragMimeTypes = ['application/vnd.code.tree.caveatbot'];
     
     private sessions: Map<string, SessionData> = new Map();
     private sessionItems: Map<string, SessionItem> = new Map();
@@ -73,6 +77,8 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
                         );
                         item.description = new Date(action.timestamp).toLocaleTimeString();
                         item.contextValue = `action-${action.type}`;
+                        // Add draggable property to enable drag and drop
+                        item.draggable = true;
                         return item;
                     })
                 );
@@ -83,7 +89,6 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
             return Promise.resolve(Array.from(this.sessionItems.values()));
         }
     }
-    
     
     // Start a new recording session
     async startSession(): Promise<void> {
@@ -127,10 +132,11 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
             sessionItem.description = new Date(newSession.startTime).toLocaleString();
             sessionItem.contextValue = 'session';
             sessionItem.tooltip = sessionDescription; // Show full description as tooltip
+            sessionItem.draggable = false; // Enable drag and drop for this session item
             
             this.sessionItems.set(sessionId, sessionItem);
             this.currentSession = sessionId;
-            this.isSessionActive = true; // Set active state
+            this.isSessionActive = true; // Set active state // Enable drag and drop for this session item
             
             // Save the session to its own file
             this.saveSession(sessionId);
@@ -338,6 +344,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
                         );
                         sessionItem.description = new Date(session.startTime).toLocaleString();
                         sessionItem.contextValue = 'session';
+                        sessionItem.draggable = false;
                         
                         this.sessionItems.set(session.id, sessionItem);
                     } catch (error) {
@@ -669,6 +676,167 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
         }
     }
 
+    // Implement drag and drop functions
+    
+    // Handle drag events
+    public handleDrag(source: readonly SessionItem[], dataTransfer: vscode.DataTransfer): void {
+        // Only proceed if we have items to drag
+        if (!source.length) {
+            return;
+        }
+        
+        // Filter out only action items, sessions cannot be dragged
+        const actionItems = source.filter(item => item instanceof ActionItem);
+        if (!actionItems.length) {
+            return;
+        }
+        
+        // Create payload with action IDs
+        const payload = actionItems.map(item => item.id);
+        dataTransfer.set('application/vnd.code.tree.caveatbot', new vscode.DataTransferItem(payload));
+    }
+    
+    // Handle drop events
+    public async handleDrop(target: SessionItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
+        // Get the dragged action IDs
+        const transferItem = dataTransfer.get('application/vnd.code.tree.caveatbot');
+        if (!transferItem) {
+            return;
+        }
+        
+        const draggedActionIds: string[] = transferItem.value;
+        if (!draggedActionIds.length) {
+            return;
+        }
+        
+        // Determine target session and position
+        let targetSessionId: string;
+        let targetIndex: number = -1;
+        
+        if (target) {
+            if (target instanceof ActionItem) {
+                // Dropped on an action - extract session ID and index
+                const actionInfo = this.getActionIndexFromItemId(target.id);
+                if (actionInfo) {
+                    targetSessionId = actionInfo.sessionId;
+                    targetIndex = actionInfo.actionIndex;
+                } else {
+                    return;
+                }
+            } else {
+                // Dropped on a session - add at the end
+                targetSessionId = target.id;
+                
+                // Get the session actions length to append at the end
+                const targetSession = this.sessions.get(targetSessionId);
+                if (targetSession) {
+                    targetIndex = targetSession.actions.length;
+                } else {
+                    return;
+                }
+            }
+        } else {
+            // Dropped on empty space - ignore
+            return;
+        }
+        
+        // Process each dragged action
+        for (const actionId of draggedActionIds) {
+            const actionInfo = this.getActionIndexFromItemId(actionId);
+            if (actionInfo) {
+                await this.moveAction(
+                    actionInfo.sessionId, 
+                    actionInfo.actionIndex, 
+                    targetSessionId, 
+                    targetIndex
+                );
+                
+                // If we're moving to the same session and the target index is after the source index,
+                // we need to decrement the target index since we've removed an item
+                if (actionInfo.sessionId === targetSessionId && targetIndex > actionInfo.actionIndex) {
+                    targetIndex--;
+                }
+                
+                // Increment target index for the next action to be placed after this one
+                targetIndex++;
+            }
+        }
+        
+        // Refresh the tree view
+        this.refresh();
+    }
+    
+    // Helper method to move an action from one session to another or within the same session
+    private async moveAction(
+        sourceSessionId: string, 
+        sourceActionIndex: number, 
+        targetSessionId: string, 
+        targetActionIndex: number
+    ): Promise<void> {
+        // Get source and target sessions
+        const sourceSession = this.sessions.get(sourceSessionId);
+        const targetSession = this.sessions.get(targetSessionId);
+        
+        if (!sourceSession || !targetSession) {
+            vscode.window.showErrorMessage('Session not found');
+            return;
+        }
+        
+        // Validate source action index
+        if (sourceActionIndex < 0 || sourceActionIndex >= sourceSession.actions.length) {
+            vscode.window.showErrorMessage('Source action not found');
+            return;
+        }
+        
+        // Validate target action index
+        if (targetActionIndex < 0 || targetActionIndex > targetSession.actions.length) {
+            vscode.window.showErrorMessage('Invalid target position');
+            return;
+        }
+        
+        // Remove the action from the source session
+        const [action] = sourceSession.actions.splice(sourceActionIndex, 1);
+        
+        // Insert the action at the target position
+        targetSession.actions.splice(targetActionIndex, 0, action);
+        
+        // Save both sessions
+        this.saveSession(sourceSessionId);
+        if (sourceSessionId !== targetSessionId) {
+            this.saveSession(targetSessionId);
+        }
+        
+        vscode.window.showInformationMessage('Action moved successfully');
+    }
+    
+    // Add a new method to reorder actions within a session
+    public async reorderActions(sessionId: string, oldIndex: number, newIndex: number): Promise<void> {
+        const session = this.sessions.get(sessionId);
+        if (!session) {
+            vscode.window.showErrorMessage('Session not found');
+            return;
+        }
+        
+        // Validate indices
+        if (oldIndex < 0 || oldIndex >= session.actions.length || 
+            newIndex < 0 || newIndex >= session.actions.length) {
+            vscode.window.showErrorMessage('Invalid action index');
+            return;
+        }
+        
+        // Remove the action from its old position
+        const [action] = session.actions.splice(oldIndex, 1);
+        
+        // Insert at new position
+        session.actions.splice(newIndex, 0, action);
+        
+        // Save the session
+        this.saveSession(sessionId);
+        
+        // Refresh the tree view
+        this.refresh();
+    }
+    
     dispose(): void {
         if (this.fileWatcherService) {
             this.fileWatcherService.stop();
@@ -679,6 +847,9 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
 
 // Session item for the tree view
 export class SessionItem extends vscode.TreeItem {
+    // Make draggable property available for all items
+    draggable?: boolean;
+    
     constructor(
         public readonly id: string,
         public readonly label: string,
@@ -709,6 +880,9 @@ export class SessionItem extends vscode.TreeItem {
 export class ActionItem extends vscode.TreeItem {
     actionTypeIcon: any;
     iconPath!: vscode.ThemeIcon | string | { light: string; dark: string };
+    // Add draggable property
+    draggable?: boolean;
+    
     constructor(
         public readonly id: string,
         public readonly label: string,

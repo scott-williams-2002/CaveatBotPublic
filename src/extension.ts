@@ -22,9 +22,11 @@ export function activate(context: vscode.ExtensionContext) {
     // Create chat handler
     const chatHandler = new ChatHandler(context);
     
-    // Register the tree view
+    // Register the tree view with drag and drop support
     const sessionTreeView = vscode.window.createTreeView('caveatbotSessionExplorer', {
-        treeDataProvider: sessionTreeProvider
+        treeDataProvider: sessionTreeProvider,
+        showCollapseAll: true,
+        dragAndDropController: sessionTreeProvider
     });
     
     // Register session recording commands
