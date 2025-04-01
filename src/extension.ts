@@ -1,14 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as fs from 'fs';
-import { FileWatcherService } from './services/fileWatcherService';
-import { ActionManager } from './services/actionManager';
-import { SessionData, ActionData, TerminalCommand } from './models/interfaces';
 import { TerminalMonitor } from './services/TerminalMonitor';
 import { SessionTreeProvider, SessionItem } from './services/Session';
-import { exec } from 'child_process';
-import * as os from 'os';
-import { beginWorkflow } from './services/dataIngestionService';
 import { ChatHandler } from './services/chatHandler';
 
 export function activate(context: vscode.ExtensionContext) {

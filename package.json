@@ -4,7 +4,7 @@
   "description": "Track and record coding sessions with actions and consequences",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.80.0"
+    "vscode": "^1.98.0"
   },
   "enabledApiProposals": [
     "terminalDataWriteEvent",
@@ -233,6 +233,7 @@
     "diff": "^5.2.0",
     "dotenv": "^16.4.7",
     "groq-sdk": "^0.17.0",
+    "harper": "^0.0.1",
     "vscode": "^1.1.37"
   },
   "devDependencies": {
@@ -244,7 +245,7 @@
     "@typescript-eslint/eslint-plugin": "^5.59.8",
     "@typescript-eslint/parser": "^5.59.8",
     "@vscode/test-electron": "^2.3.2",
-    "eslint": "^8.41.0",
+    "eslint": "^8.57.1",
     "glob": "^8.1.0",
     "mocha": "^10.2.0",
     "typescript": "^5.1.3"

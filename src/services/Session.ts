@@ -24,6 +24,7 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
     
     constructor(private context: vscode.ExtensionContext) {
         this.sessionsStoragePath = path.join(context.globalStorageUri.fsPath, 'recording-sessions');
+        console.log(`Sessions will be stored in: ${this.sessionsStoragePath}`);
         this.actionManager = new ActionManager();
         
         // Ensure the sessions directory exists
@@ -64,14 +65,13 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
             if (session) {
                 return Promise.resolve(
                     session.actions.map((action, index) => {
-                        const item = new SessionItem(
+                        const item = new ActionItem(
                             `${sessionId}-action-${index}`,
                             action.command.substring(0, 50) + (action.command.length > 50 ? '...' : ''),
-                            vscode.TreeItemCollapsibleState.None
+                            vscode.TreeItemCollapsibleState.None,
+                            action.type
                         );
                         item.description = new Date(action.timestamp).toLocaleTimeString();
-                        item.iconPath = this.getIconForAction(action);
-                        // Set a consistent context value with both 'action' and the action type
                         item.contextValue = `action-${action.type}`;
                         return item;
                     })
@@ -84,22 +84,6 @@ export class SessionTreeProvider implements vscode.TreeDataProvider<SessionItem>
         }
     }
     
-    private getIconForAction(action: ActionData): vscode.ThemeIcon {
-        switch(action.type) {
-            case 'command':
-                return new vscode.ThemeIcon('terminal');
-            case 'consequence':
-                return action.success 
-                    ? new vscode.ThemeIcon('check') 
-                    : new vscode.ThemeIcon('error');
-            case 'note':
-                return new vscode.ThemeIcon('pencil');
-            case 'screenshot':
-                return new vscode.ThemeIcon('device-camera');
-            default:
-                return new vscode.ThemeIcon('circle-outline');
-        }
-    }
     
     // Start a new recording session
     async startSession(): Promise<void> {
@@ -716,6 +700,44 @@ export class SessionItem extends vscode.TreeItem {
                 command: "caveatbot.viewSessionJson",
                 arguments: [this]
             };
+        }
+    }
+}
+
+
+
+export class ActionItem extends vscode.TreeItem {
+    actionTypeIcon: any;
+    iconPath!: vscode.ThemeIcon | string | { light: string; dark: string };
+    constructor(
+        public readonly id: string,
+        public readonly label: string,
+        public readonly collapsibleState: vscode.TreeItemCollapsibleState, 
+        public readonly actionType: string
+    ) {
+        super(label, collapsibleState);
+        
+        // Set context value for action items to enable right-click menus
+        this.contextValue = 'action';
+    
+        // Use the static method ThemeIcon.from() instead of constructor
+        this.iconPath = this.getIconForActionType(this.actionType);
+    }
+
+    private getIconForActionType(actionType: string): vscode.ThemeIcon {
+        switch (actionType) {
+            case 'command':
+                return new vscode.ThemeIcon('terminal');
+            case 'note':
+                return new vscode.ThemeIcon('pencil');
+            case 'screenshot':
+                return new vscode.ThemeIcon('device-camera');
+            case 'consequence':
+                return new vscode.ThemeIcon('check');
+            case 'codeChange':
+                return new vscode.ThemeIcon('edit');
+            default:
+                return new vscode.ThemeIcon('circle-outline');
         }
     }
 }
